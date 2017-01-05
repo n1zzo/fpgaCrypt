@@ -424,7 +424,7 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], uint8 output[16] )
 *	/param num_d lunghezza dati
 *
 */
-__kernel void aesEncrypt ( __global const float* data_array_d, __global const float* key_d, __global float* res_d, const int size_key_d, const int num_d)
+__kernel void aesEncrypt ( __global const float* data_array_d, __global const float* key_d, __global float* res_d, const unsigned int size_key_d, const unsigned int num_d)
 {
         aes_context ctx;
         unsigned char data[16];

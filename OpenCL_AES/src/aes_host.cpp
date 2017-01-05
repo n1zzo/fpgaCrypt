@@ -27,6 +27,7 @@ void checkError(const char* msg, cl_int err);
 int main(int argc, const char **argv)
 {
 	const unsigned int size = 32;
+	unsigned int size_key_d;
 	const unsigned int mem_size = sizeof(float)*size;
 	
 	//OpenCl variables
@@ -41,7 +42,6 @@ int main(int argc, const char **argv)
 	cl_mem data_array_d;
 	cl_mem res_d;
 	cl_mem key_d;
-	cl_mem size_key_d;
 	cl_kernel vector_k;
 	float* res_h = new float[size];
 	size_t local_ws = 4;
@@ -81,15 +81,12 @@ int main(int argc, const char **argv)
 		data_array_d = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, mem_size, res_h, &error);
 		checkError("initialization device memory data", error);
 		
-		res_d = clCreateBuffer(context, CL_MEM_WRITE_ONLY, mem_size, NULL, &error);
-		checkError("initialization device memory result", error);
-		
 		key_d = clCreateBuffer(context, CL_MEM_READ_ONLY, mem_size, NULL, &error);
 		checkError("initialization device memory key", error);
 	
-	        size_key_d = clCreateBuffer(context, CL_MEM_READ_ONLY, mem_size, NULL, &error);
-	        checkError("initialization device memory key size", error);
-			
+		res_d = clCreateBuffer(context, CL_MEM_WRITE_ONLY, mem_size, NULL, &error);
+		checkError("initialization device memory result", error);
+		
 		//Builds the program
 		error = clBuildProgram(program, 1, &device, NULL, NULL, NULL);
 		checkError("Building program", error);
@@ -103,11 +100,15 @@ int main(int argc, const char **argv)
 		checkError("'Extracting' the kernel", error);
 		
 		error = clSetKernelArg(vector_k, 0, sizeof(cl_mem), &data_array_d);
-		error |= clSetKernelArg(vector_k, 1, sizeof(cl_mem), &key_d);
-		error |= clSetKernelArg(vector_k, 2, sizeof(cl_mem), &res_d);
-	        error |= clSetKernelArg(vector_k, 3, sizeof(cl_mem), &size_key_d);
-		error |= clSetKernelArg(vector_k, 4, sizeof(size_t), &size);
-		checkError("queue", error);
+		checkError("0 Setting kernel arguments", error);
+		error = clSetKernelArg(vector_k, 1, sizeof(cl_mem), &key_d);
+		checkError("1 Setting kernel arguments", error);
+		error = clSetKernelArg(vector_k, 2, sizeof(cl_mem), &res_d);
+		checkError("2 Setting kernel arguments", error);
+	        error = clSetKernelArg(vector_k, 3, sizeof(unsigned int), &size_key_d);
+		checkError("3 Setting kernel arguments", error);
+		error = clSetKernelArg(vector_k, 4, sizeof(unsigned int), &size);
+		checkError("4 Setting kernel arguments", error);
 			
 		// Launching kernel
 	const size_t global_ws = 1024;
