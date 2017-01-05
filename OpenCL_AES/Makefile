@@ -1,19 +1,20 @@
-#ld script for project
-#
-################################################################################
+NAME    = myprog
+CC      = gcc
+CFLAGS  = -Wall -pedantic -march=native -pipe -O3 -I $(INCDIR)
+LDFLAGS = 
+SRCDIR  = ./src
+INCDIR  = ./include
+BINDIR  = /usr/local/bin
+SOURCES = $(SRCDIR)/aes_host.cpp $(SRCDIR)/aes_kernel_file.cl
+OBJECTS = $(SOURCES:.c=.o)
 
-# Add source files here
-EXECUTABLE      := aes_host_file_ok
-# C/C++ source files (compiled with gcc / c++)
-CCFILES         := aes_host_file_ok.cpp
+all: $(NAME)
 
+$(NAME): $(OBJECTS)
+	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
 
-################################################################################
-# Rules and targets
+$(SRCDIR)/%.o: %.c
+	$(CC) $^ -c $< $(CFLAGS) $(LDFLAGS)
 
-# NOTE: Assuming P4 based install until OpenCL becomes public
-# Adjust P4_Root, default is ${HOME}/perforce/
-# P4_ROOT=${HOME}/myperforce/
-
-include ../../common/common_opencl.mk
-
+clean:
+	rm *.o $(NAME)
