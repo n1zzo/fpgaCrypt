@@ -87,8 +87,8 @@ int main(int argc, const char **argv)
 		key_d = clCreateBuffer(context, CL_MEM_READ_ONLY, mem_size, NULL, &error);
 		checkError("initialization device memory key", error);
 	
-	    size_key_d = clCreateBuffer(context, CL_MEM_READ_ONLY, mem_size, NULL, &error);
-	    checkError("initialization device memory key size", error);
+	        size_key_d = clCreateBuffer(context, CL_MEM_READ_ONLY, mem_size, NULL, &error);
+	        checkError("initialization device memory key size", error);
 			
 		//Builds the program
 		error = clBuildProgram(program, 1, &device, NULL, NULL, NULL);
@@ -105,7 +105,7 @@ int main(int argc, const char **argv)
 		error = clSetKernelArg(vector_k, 0, sizeof(cl_mem), &data_array_d);
 		error |= clSetKernelArg(vector_k, 1, sizeof(cl_mem), &key_d);
 		error |= clSetKernelArg(vector_k, 2, sizeof(cl_mem), &res_d);
-	    error |= clSetKernelArg(vector_k, 3, sizeof(cl_mem), &size_key_d);
+	        error |= clSetKernelArg(vector_k, 3, sizeof(cl_mem), &size_key_d);
 		error |= clSetKernelArg(vector_k, 4, sizeof(size_t), &size);
 		checkError("queue", error);
 			
@@ -135,7 +135,7 @@ int main(int argc, const char **argv)
 	clReleaseMemObject(data_array_d);
 	clReleaseMemObject(res_d);
 	
-	printf("It Run Correctly!\n");
+	//printf("It Run Correctly!\n");
 	return 0;
 	
 }

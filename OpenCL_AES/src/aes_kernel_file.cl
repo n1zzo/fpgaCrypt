@@ -118,7 +118,8 @@ V(65,BF,BF,DA), V(D7,E6,E6,31), V(84,42,42,C6), V(D0,68,68,B8), \
 V(82,41,41,C3), V(29,99,99,B0), V(5A,2D,2D,77), V(1E,0F,0F,11), \
 V(7B,B0,B0,CB), V(A8,54,54,FC), V(6D,BB,BB,D6), V(2C,16,16,3A)
 
-#define V(a,b,c,d) 0x##a##b##c##d                        /** creazione di quattro tabelle per il criptaggio parallelo */
+/** creazione di quattro tabelle per il criptaggio parallelo */
+#define V(a,b,c,d) 0x##a##b##c##d    
 __constant static const uint32 FT0[256] = { FT };
 #undef V
 
@@ -136,7 +137,7 @@ __constant static const uint32 FT3[256] = { FT };
 
 #undef FT
 
-__constant static const uint32 RCON[10] =                          /** costante per il round */
+__constant static const uint32 RCON[10] =       /** costante per il round */
 {
     0x01000000, 0x02000000, 0x04000000, 0x08000000,
     0x10000000, 0x20000000, 0x40000000, 0x80000000,
@@ -151,16 +152,13 @@ __constant static const uint32 RCON[10] =                          /** costante 
 			  ((uint32) (b)[(i) + 3]))
 
 /** Passaggio da 32 bit a 4 per la ricomposizione del dato criptato */
-#define PUT_UINT32(n,b,i)                   \       {                                               \
-(b)[(i)    ] = (uint8) ( (n) >> 24 );       \
-(b)[(i) + 1] = (uint8) ( (n) >> 16 );       \
-(b)[(i) + 2] = (uint8) ( (n) >>  8 );       \
-(b)[(i) + 3] = (uint8) ( (n)       );       \
+void put_uint32(uint32 n, uint8 *b, uint8 i)
+{
+        b[i  ] = (uint8) ( n >> 24 );       \
+        b[i+1] = (uint8) ( n >> 16 );       \
+        b[i+2] = (uint8) ( n >>  8 );       \
+        b[i+3] = (uint8) ( n       );       \
 }
-
-uint32 *RK, X0, X1, X2, X3, Y0, Y1, Y2, Y3;
-const int idx;
-
 
 /**
 *
@@ -169,13 +167,13 @@ const int idx;
 *	/param Y0, Y1, Y2, Y3 dati in ingresso e risultati del round precedente
 *
 */
-void aes_fround( uint32 XO, uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3)
+void aes_fround( uint32 X0, uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3, uint32 *RK, int idx)
 {
 	if(idx < 4)
 	{
 		RK += 4; 
-		switch(idx)							/** suddivisione e criptaggio delle paraole eseguite da thread */
-		{								/** paralleli, uno per ogni quarto di dato */
+		switch(idx)   /** suddivisione e criptaggio delle paraole eseguite da thread */
+		{	      /** paralleli, uno per ogni quarto di dato */
 			case 0:
 				X0 = RK[0] ^ FT0[ (uint8) ( Y0 >> 24 ) ] ^  
 				FT1[ (uint8) ( Y1 >> 16 ) ] ^  
@@ -214,10 +212,10 @@ void aes_fround( uint32 XO, uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3)
 */
 int aes_set_key( aes_context *ctx, uint8 *key, int nbits )
 {
-	int i;
+    int i;
     uint32 *RK, *SK;
 	
-	switch( nbits )				/** settario del number di round da effettuare in base alla lunghezza della chiave */
+    switch( nbits )   /** settaggio del numero di round da effettuare in base alla lunghezza della chiave */
     {
         case 128: ctx->nr = 10; break;
         case 192: ctx->nr = 12; break;
@@ -225,7 +223,7 @@ int aes_set_key( aes_context *ctx, uint8 *key, int nbits )
         default : return( 1 );
     }
 	
-	RK = ctx->erk;				/** inizializzazione della chiave per ogni round */
+    RK = ctx->erk;			/** inizializzazione del puntatore alla chiave per ogni round */
 	
     for( i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
     {
@@ -295,7 +293,7 @@ int aes_set_key( aes_context *ctx, uint8 *key, int nbits )
 			break;
     }
 	
-	return( 0 );
+    return( 0 );
 	
 }
 
@@ -308,64 +306,71 @@ int aes_set_key( aes_context *ctx, uint8 *key, int nbits )
 *	/param output dati criptati
 *
 */
-void aes_encrypt( aes_context *ctx, uint8 input[16], __global uint8 output[16] )
+void aes_encrypt( aes_context *ctx, uint8 input[16], uint8 output[16] )
 {
 	
+    __private uint32 *RK;            /** Round key */
+    __private int idx;               /** Index of the working item */
+    __local uint32 X0, X1, X2, X3;   /** Input blocks (shared in the wg) */
+    __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
+
     RK = ctx->erk;
 	
 	idx = get_global_id(0);
-	
+
+        /** Round Zero */
 	if(idx < 4)
 	{
-		switch(idx)							/** adattamento dei dati ai 32 bit */
+		switch(idx)		  /** adattamento dei dati ai 32 bit */
 		{
 			case 0:
-				GET_UINT32( X0, input,  0 ); X0 ^= RK[0];
+				GET_UINT32( X0, input,  0 );
+                                X0 ^= RK[0];
 				break;
 			case 1:
-				GET_UINT32( X1, input,  4 ); X1 ^= RK[1];
+				GET_UINT32( X1, input,  4 );
+                                X1 ^= RK[1];
 				break;
 			case 2:
-				GET_UINT32( X2, input,  8 ); X2 ^= RK[2];
+				GET_UINT32( X2, input,  8 );
+                                X2 ^= RK[2];
 				break;
 			case 3:
-				GET_UINT32( X3, input, 12 ); X3 ^= RK[3];
+				GET_UINT32( X3, input, 12 );
+                                X3 ^= RK[3];
 				break;
 		}
 		
 		barrier(CLK_GLOBAL_MEM_FENCE);
 	}
 	
-	for(int i=0; i<ctx->nr; i++)					/** N-1 round di criptaggio, in base alla lunghezza della chiave */
+	for(int i=0; i<ctx->nr; i++)	  /** N-1 round di criptaggio, in base alla lunghezza della chiave */
 	{
 		if(idx < 4)
 		{
 			switch(idx)
 			{
 				case 0:
-					aes_fround(Y0, X0, X1, X2, X3);
+					aes_fround(Y0, X0, X1, X2, X3, RK, idx);
 					break;
 				case 1:
-					aes_fround(Y1, X0, X1, X2, X3);
+					aes_fround(Y1, X0, X1, X2, X3, RK, idx);
 					break;
 				case 2:
-					aes_fround(Y2, X0, X1, X2, X3);
+					aes_fround(Y2, X0, X1, X2, X3, RK, idx);
 					break;
 				case 3:
-					aes_fround(Y3, X0, X1, X2, X3);
+					aes_fround(Y3, X0, X1, X2, X3, RK, idx);
 					break;
 			}
-			
-			barrier(CLK_GLOBAL_MEM_FENCE);			/** sincronizzazione tra i thread */
+			barrier(CLK_GLOBAL_MEM_FENCE);	  /** sincronizzazione tra i thread */
 			X0 = Y0;
 			X1 = Y1;
 			X2 = Y2;
 			X3 = Y3;
-			
 		}
 	}
-	
-									/** ultimo round */
+							  /** ultimo round */
 	RK +=4;
 	
 	
@@ -378,28 +383,28 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], __global uint8 output[16] )
 				( FSb[ (uint8) ( Y1 >> 16 ) ] << 16 ) ^
 				( FSb[ (uint8) ( Y2 >>  8 ) ] <<  8 ) ^
 				( FSb[ (uint8) ( Y3       ) ]       );
-				PUT_UINT32( X0, output,  0 );
+				put_uint32( X0, output,  0 );
 				break;
 			case 1:
 				X1 = RK[1] ^ ( FSb[ (uint8) ( Y1 >> 24 ) ] << 24 ) ^
 				( FSb[ (uint8) ( Y2 >> 16 ) ] << 16 ) ^
 				( FSb[ (uint8) ( Y3 >>  8 ) ] <<  8 ) ^
 				( FSb[ (uint8) ( Y0       ) ]       );
-				PUT_UINT32( X1, output,  4 );
+				put_uint32( X1, output,  4 );
 				break;
 			case 2:
 				X2 = RK[2] ^ ( FSb[ (uint8) ( Y2 >> 24 ) ] << 24 ) ^
 				( FSb[ (uint8) ( Y3 >> 16 ) ] << 16 ) ^
 				( FSb[ (uint8) ( Y0 >>  8 ) ] <<  8 ) ^
 				( FSb[ (uint8) ( Y1       ) ]       );
-				PUT_UINT32( X2, output,  8 );
+				put_uint32( X2, output,  8 );
 				break;
 			case 3:
 				X3 = RK[3] ^ ( FSb[ (uint8) ( Y3 >> 24 ) ] << 24 ) ^
 				( FSb[ (uint8) ( Y0 >> 16 ) ] << 16 ) ^
 				( FSb[ (uint8) ( Y1 >>  8 ) ] <<  8 ) ^
 				( FSb[ (uint8) ( Y2       ) ]       );
-				PUT_UINT32( X3, output, 12 );
+				put_uint32( X3, output, 12 );
 				break;
 		}
 		
@@ -410,7 +415,8 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], __global uint8 output[16] )
 
 /**
 *
-*	Funzione chiamata dell'host e attraverso la quale vengono forniti i dati iniziali e i risultati
+*	Funzione chiamata dell'host e attraverso la quale vengono forniti
+*       i dati iniziali e i risultati.
 *	/param data_array_d dati in ingresso
 *	/param key_d chiave di criptaggio
 *	/param res_d risultato
@@ -420,10 +426,10 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], __global uint8 output[16] )
 */
 __kernel void aesEncrypt ( __global const float* data_array_d, __global const float* key_d, __global float* res_d, const int size_key_d, const int num_d)
 {
-	aes_context ctx;
-    unsigned char data[16];
+        aes_context ctx;
+        unsigned char data[16];
 	unsigned char res[16];
-    unsigned char key[32];
+        unsigned char key[32];
 	
 	for(int i=0; i<16; i++)
 	{
