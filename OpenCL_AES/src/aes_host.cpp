@@ -2,19 +2,20 @@
  *
  *    Sistema di criptaggio con algoritmo AES che utilizza la GPU come base di calcolo
  *
- *    \author Marco Fumagalli
+ *    \original author Marco Fumagalli
  */
 #include <iostream>
-#include <oclUtils.h>
 #include <stdio.h>
 #include <string>
+#include <CL/cl.hpp>
+#include <assert.h>
 
 using std::cout;
 using std::endl;
 
 /**
  *
- *   Controlla se c' stato qualche errore nelle chiamate di OpenCL
+ *   Controlla se c'e` stato qualche errore nelle chiamate di OpenCL
  *   Individua il tipo di errore e lo stampa a video
  *
  *   \param msg messaggio da stampare a video con il tipo di errore
@@ -48,7 +49,7 @@ int main(int argc, const char **argv)
 	error = clGetPlatformIDs(1, &platform, &num_of_platforms);
 	checkError("initialization platform", error);
 
-	error = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
+	error = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &device, NULL);
 	checkError("initialization device", error);
 	
 	context = clCreateContext(NULL, 1, &device, NULL, NULL, &error);
@@ -66,13 +67,27 @@ int main(int argc, const char **argv)
 	}
 	
 	//Creates the program
-		unsigned int file_size = 0;         
-	char  *source = NULL;
-	const char* source_path = shrFindFilePath("aes_kernel_file.cl", argv[0]);
-    source = oclLoadProgSource(source_path, "", &file_size);
-	//printf("%s  -  %s",pathname, source);
-	cl_program program = clCreateProgramWithSource(context, 1, (const char**)&source, &file_size, &error);
-	checkError("creates program", error);
+        FILE *fp = fopen("./src/aes_kernel_file.cl", "r");
+        fseek(fp, 0L, SEEK_END);
+        size_t file_size = (size_t)ftell(fp);
+        rewind(fp);
+        
+
+        char *source = (char *)malloc(file_size);
+        assert(source != NULL); // Die if malloc failed
+
+        char *linebuf = NULL;
+        size_t linesiz = 0;
+        ssize_t linelen = 0;
+        while((linelen = getline(&linebuf, &linesiz, fp)) > 0) {
+          source = strcat(source, linebuf);
+          free(linebuf);
+          linebuf = NULL;
+        }
+
+	cl_program program = clCreateProgramWithSource(context, 1,(const char **)&source, (const size_t *)&file_size, &error);
+	checkError("Creating program", error);
+        free(source);
 	
 		//Initializing device memory
 		data_array_d = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, mem_size, res_h, &error);
@@ -89,7 +104,7 @@ int main(int argc, const char **argv)
 			
 		//Builds the program
 		error = clBuildProgram(program, 1, &device, NULL, NULL, NULL);
-		checkError("builds program", error);
+		checkError("Building program", error);
 	
 	char build[2048];
 	clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 2048, build, NULL);

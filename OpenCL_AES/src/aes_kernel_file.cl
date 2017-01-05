@@ -1,9 +1,9 @@
 #ifndef uint8
-#define uint8  unsigned char                 /** ridefinizione del char senza segno */
+#define uint8  unsigned char        /** ridefinizione del char senza segno */
 #endif
 
 #ifndef uint32
-#define uint32 unsigned long int            /** ridefinizione di un intero lungo */
+#define uint32 unsigned long int     /** ridefinizione di un intero lungo */
 #endif
 
 typedef struct

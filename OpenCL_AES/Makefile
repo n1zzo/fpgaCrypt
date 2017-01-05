@@ -1,11 +1,12 @@
-NAME    = myprog
-CC      = gcc
+NAME    = aesopencl
+CC      = g++
 CFLAGS  = -Wall -pedantic -march=native -pipe -O3 -I $(INCDIR)
-LDFLAGS = 
+LDFLAGS = -lOpenCL
 SRCDIR  = ./src
 INCDIR  = ./include
 BINDIR  = /usr/local/bin
-SOURCES = $(SRCDIR)/aes_host.cpp $(SRCDIR)/aes_kernel_file.cl
+SOURCES = $(SRCDIR)/aes_host.cpp
+KERNELS = $(SRCDIR)/aes_kernel_file.cl
 OBJECTS = $(SOURCES:.c=.o)
 
 all: $(NAME)
