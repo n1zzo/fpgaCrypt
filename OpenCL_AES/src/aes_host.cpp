@@ -5,6 +5,7 @@
  *    \original author Marco Fumagalli
  */
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <string>
 #include <CL/cl.hpp>
@@ -67,27 +68,14 @@ int main(int argc, const char **argv)
 	}
 	
 	//Creates the program
-        FILE *fp = fopen("./src/aes_kernel_file.cl", "r");
-        fseek(fp, 0L, SEEK_END);
-        size_t file_size = (size_t)ftell(fp);
-        rewind(fp);
-        
+	std::ifstream kernel("./src/aes_kernel_file.cl");
+	std::string content((std::istreambuf_iterator<char>(kernel)),
+                        std::istreambuf_iterator<char>());
+	const char *source = content.c_str();
+	size_t source_size = content.size();
 
-        char *source = (char *)malloc(file_size);
-        assert(source != NULL); // Die if malloc failed
-
-        char *linebuf = NULL;
-        size_t linesiz = 0;
-        ssize_t linelen = 0;
-        while((linelen = getline(&linebuf, &linesiz, fp)) > 0) {
-          source = strcat(source, linebuf);
-          free(linebuf);
-          linebuf = NULL;
-        }
-
-	cl_program program = clCreateProgramWithSource(context, 1,(const char **)&source, (const size_t *)&file_size, &error);
+	cl_program program = clCreateProgramWithSource(context, 1, &source, &source_size, &error);
 	checkError("Creating program", error);
-        free(source);
 	
 		//Initializing device memory
 		data_array_d = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, mem_size, res_h, &error);
