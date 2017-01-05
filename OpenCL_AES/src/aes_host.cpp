@@ -26,8 +26,8 @@ void checkError(const char* msg, cl_int err);
 
 int main(int argc, const char **argv)
 {
-	const unsigned int size = 32;
-	unsigned int size_key_d;
+	const unsigned int size = 32; /** Plaintext size, now we have just a single block */
+	unsigned int size_key_d;      /** Key size in bits (128, 192 or 256) */
 	const unsigned int mem_size = sizeof(float)*size;
 	
 	//OpenCl variables
@@ -120,6 +120,13 @@ int main(int argc, const char **argv)
 			
 		// Reading back
 		clEnqueueReadBuffer(queue, res_d, CL_TRUE, 0, mem_size, res_h, 0, NULL, NULL);
+
+                printf("Output block is: \n");
+                for(unsigned int i = 0; i < size; i++)
+                {
+                        printf("%02X ", (unsigned int)res_h[i]);
+                }
+                printf("\n");
 
 	
 	

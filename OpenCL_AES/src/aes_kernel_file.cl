@@ -426,6 +426,9 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], uint8 output[16] )
 */
 __kernel void aesEncrypt ( __global const float* data_array_d, __global const float* key_d, __global float* res_d, const unsigned int size_key_d, const unsigned int num_d)
 {
+        // [TODO] num_d parameter is actually never used!
+        // We will use it to implement XTS mode of operation
+        
         aes_context ctx;
         unsigned char data[16];
 	unsigned char res[16];
