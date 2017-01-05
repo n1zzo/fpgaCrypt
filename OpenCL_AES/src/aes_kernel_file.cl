@@ -13,7 +13,7 @@ typedef struct
 }
 aes_context;		/** definizione del contesto */
 
-static const uint32 FSb[256] =                             /** S-box per il criptaggio */
+__constant static const uint32 FSb[256] =                             /** S-box per il criptaggio */
 {
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5,
     0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
@@ -119,40 +119,39 @@ V(82,41,41,C3), V(29,99,99,B0), V(5A,2D,2D,77), V(1E,0F,0F,11), \
 V(7B,B0,B0,CB), V(A8,54,54,FC), V(6D,BB,BB,D6), V(2C,16,16,3A)
 
 #define V(a,b,c,d) 0x##a##b##c##d                        /** creazione di quattro tabelle per il criptaggio parallelo */
-static const uint32 FT0[256] = { FT };
+__constant static const uint32 FT0[256] = { FT };
 #undef V
 
 #define V(a,b,c,d) 0x##d##a##b##c
-static const uint32 FT1[256] = { FT };
+__constant static const uint32 FT1[256] = { FT };
 #undef V
 
 #define V(a,b,c,d) 0x##c##d##a##b
-static const uint32 FT2[256] = { FT };
+__constant static const uint32 FT2[256] = { FT };
 #undef V
 
 #define V(a,b,c,d) 0x##b##c##d##a
-static const uint32 FT3[256] = { FT };
+__constant static const uint32 FT3[256] = { FT };
 #undef V
 
 #undef FT
 
-static const uint32 RCON[10] =                          /** costante per il round */
+__constant static const uint32 RCON[10] =                          /** costante per il round */
 {
     0x01000000, 0x02000000, 0x04000000, 0x08000000,
     0x10000000, 0x20000000, 0x40000000, 0x80000000,
     0x1B000000, 0x36000000
 };
 
-#define GET_UINT32(n,b,i)                       \       /** Passaggio da un quarto di dati (4 bit) ai 32 bit per la manipolazione */
-{                                               \
-(n) = ( (uint32) (b)[(i)    ] << 24 )       \
-| ( (uint32) (b)[(i) + 1] << 16 )       \
-| ( (uint32) (b)[(i) + 2] <<  8 )       \
-| ( (uint32) (b)[(i) + 3]       );      \
-}
+/** Passaggio da un quarto di dati (4 bit) ai 32 bit per la manipolazione */
+#define GET_UINT32(n,b,i) ((n) =                           \
+			  ((uint32) (b)[(i)] << 24 ) |     \
+			  ((uint32) (b)[(i) + 1] << 16 ) | \
+			  ((uint32) (b)[(i) + 2] << 8  ) | \
+			  ((uint32) (b)[(i) + 3]))
 
-#define PUT_UINT32(n,b,i)                       \       /** Passaggio da 32 bit a 4 per la ricomposizione del dato criptato */
-{                                               \
+/** Passaggio da 32 bit a 4 per la ricomposizione del dato criptato */
+#define PUT_UINT32(n,b,i)                   \       {                                               \
 (b)[(i)    ] = (uint8) ( (n) >> 24 );       \
 (b)[(i) + 1] = (uint8) ( (n) >> 16 );       \
 (b)[(i) + 2] = (uint8) ( (n) >>  8 );       \
@@ -226,7 +225,7 @@ int aes_set_key( aes_context *ctx, uint8 *key, int nbits )
         default : return( 1 );
     }
 	
-	RK = ctx->erk;				/** inizializzazione della chiave per ogni round
+	RK = ctx->erk;				/** inizializzazione della chiave per ogni round */
 	
     for( i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
     {
