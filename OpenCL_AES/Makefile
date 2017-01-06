@@ -1,6 +1,6 @@
 NAME    = aesopencl
 CC      = g++
-CFLAGS  = -Wall -pedantic -march=native -pipe -O3 -I $(INCDIR)
+CFLAGS  = -Wall -pedantic -march=native -pipe -O3 -std=c++11 -I $(INCDIR)
 LDFLAGS = -lOpenCL
 SRCDIR  = ./src
 INCDIR  = /usr/include/CL

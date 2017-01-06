@@ -11,7 +11,9 @@
 
 using namespace std;
 
-const std::string hw("Hello World\n");
+const unsigned int key_length = 256;         // Key size in bits
+const unsigned int key_size = key_length/8;  // Key size in bytes
+const unsigned int ptx_size = 16;            // Plaintext size in bytes
 
 inline void checkErr(cl_int err, const char * name) {
   if (err != CL_SUCCESS) {
@@ -38,22 +40,39 @@ int main(void) {
   checkErr(err, "Context::Context()");
 
   // Buffer creation
-  char * outH = new char[hw.length()+1];
-  cl::Buffer outCL(context,
-                   CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
-                   hw.length()+1,
-                   outH,
-                   &err);
-                   checkErr(err, "Buffer::Buffer()");
+  unsigned char * ptx_h = new unsigned char[ptx_size];
+  unsigned char * ctx_h = new unsigned char[ptx_size];
+  unsigned char * key_h = new unsigned char[key_size];
+
+  cl::Buffer ptxBuffer(context,
+                       CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
+                       ptx_size,
+                       ptx_h,
+                       &err);
+                       checkErr(err, "Buffer::Buffer()");
   
+  cl::Buffer ctxBuffer(context,
+                       CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
+                       ptx_size,
+                       ctx_h,
+                       &err);
+                       checkErr(err, "Buffer::Buffer()");
+
+  cl::Buffer keyBuffer(context,
+                       CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
+                       key_size,
+                       key_h,
+                       &err);
+                       checkErr(err, "Buffer::Buffer()");
+
   // Get devices from context
   vector<cl::Device> devices;
   devices = context.getInfo<CL_CONTEXT_DEVICES>();
   checkErr(devices.size() > 0 ? CL_SUCCESS : -1, "devices.size() > 0");
   
   // Open and build kernel
-  std::ifstream file("./src/hello_kernel.cl");
-  checkErr(file.is_open() ? CL_SUCCESS:-1, "./src/hello_kernel.cl");
+  std::ifstream file("./src/aes_kernel.cl");
+  checkErr(file.is_open() ? CL_SUCCESS:-1, "./src/aes_kernel.cl");
   std::string prog(std::istreambuf_iterator<char>(file),
                    (std::istreambuf_iterator<char>()));
   cl::Program::Sources source(1, std::make_pair(prog.c_str(), prog.length()+1));
@@ -61,8 +80,17 @@ int main(void) {
   err = program.build(devices,"");
   checkErr(err, "Program::build()");
   
-  cl::Kernel kernel(program, "hello", &err);
-  checkErr(err, "Kernel::Kernel()");err = kernel.setArg(0, outCL);
+  cl::Kernel kernel(program, "aesEncrypt", &err);
+  checkErr(err, "Kernel::Kernel()");
+  err = kernel.setArg(0, ptxBuffer);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(1, keyBuffer);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(2, ctxBuffer);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(3, key_length);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(4, ptx_size);
   checkErr(err, "Kernel::setArg()");
   
   // Create command queue and run kernel
@@ -70,7 +98,7 @@ int main(void) {
   checkErr(err, "CommandQueue::CommandQueue()");cl::Event event;
   err = queue.enqueueNDRangeKernel(kernel,
                                    cl::NullRange,
-                                   cl::NDRange(hw.length()+1),
+                                   cl::NDRange(4),
                                    cl::NDRange(1, 1),
                                    NULL,
                                    &event);
@@ -78,12 +106,26 @@ int main(void) {
   
   // Read results from device
   event.wait();
-  err = queue.enqueueReadBuffer(outCL,
+  err = queue.enqueueReadBuffer(ctxBuffer,
                                 CL_TRUE,
                                 0,
-                                hw.length()+1,
-                                outH);
+                                ptx_size,
+                                ctx_h);
   checkErr(err, "ComamndQueue::enqueueReadBuffer()");
-  std::cout << outH;
+
+  // Print results
+  cout << "Plaintext is:  ";
+  for(const char &i : ptx_h) {
+    printf("%02X ", i);
+  }
+  cout << "Key is:        ";
+  for(const char &i : key_h) {
+    printf("%02X ", i);
+  }
+  cout << "Ciphertext is: ";
+  for(const char &i : ctx_h) {
+    printf("%02X ", i);
+  }
+  cout << endl;
   return EXIT_SUCCESS;
 }
