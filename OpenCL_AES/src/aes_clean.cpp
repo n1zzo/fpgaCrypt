@@ -8,10 +8,11 @@
 #include <string>
 #include <iterator>
 #include <vector>
+#include <array>
 
 using namespace std;
 
-const unsigned int key_length = 256;         // Key size in bits
+const unsigned int key_length = 128;         // Key size in bits
 const unsigned int key_size = key_length/8;  // Key size in bytes
 const unsigned int ptx_size = 16;            // Plaintext size in bytes
 
@@ -40,28 +41,35 @@ int main(void) {
   checkErr(err, "Context::Context()");
 
   // Buffer creation
-  unsigned char * ptx_h = new unsigned char[ptx_size];
-  unsigned char * ctx_h = new unsigned char[ptx_size];
-  unsigned char * key_h = new unsigned char[key_size];
+  array<unsigned char, ptx_size> ptx_h;
+  array<unsigned char, ptx_size> ctx_h;
+  array<unsigned char, key_size> key_h;
+
+  // Data initialization
+  ptx_h.fill(0x00);
+  ctx_h.fill(0x00);
+  key_h.fill(0x00);
+
+  ptx_h[0] = 0x80;
 
   cl::Buffer ptxBuffer(context,
                        CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
                        ptx_size,
-                       ptx_h,
+                       ptx_h.data(),
                        &err);
                        checkErr(err, "Buffer::Buffer()");
   
   cl::Buffer ctxBuffer(context,
                        CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
                        ptx_size,
-                       ctx_h,
+                       ctx_h.data(),
                        &err);
                        checkErr(err, "Buffer::Buffer()");
 
   cl::Buffer keyBuffer(context,
                        CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
                        key_size,
-                       key_h,
+                       key_h.data(),
                        &err);
                        checkErr(err, "Buffer::Buffer()");
 
@@ -110,21 +118,21 @@ int main(void) {
                                 CL_TRUE,
                                 0,
                                 ptx_size,
-                                ctx_h);
+                                ctx_h.data());
   checkErr(err, "ComamndQueue::enqueueReadBuffer()");
 
   // Print results
   cout << "Plaintext is:  ";
-  for(const char &i : ptx_h) {
-    printf("%02X ", i);
+  for(uint i = 0; i < ptx_size; i++) {
+    printf("%02X", ptx_h[i]);
   }
-  cout << "Key is:        ";
-  for(const char &i : key_h) {
-    printf("%02X ", i);
+  cout << endl << "Key is:        ";
+  for(uint i = 0; i < key_size; i++) {
+    printf("%02X", key_h[i]);
   }
-  cout << "Ciphertext is: ";
-  for(const char &i : ctx_h) {
-    printf("%02X ", i);
+  cout << endl << "Ciphertext is: ";
+  for(uint i = 0; i < ptx_size; i++) {
+    printf("%02X", ctx_h[i]);
   }
   cout << endl;
   return EXIT_SUCCESS;
