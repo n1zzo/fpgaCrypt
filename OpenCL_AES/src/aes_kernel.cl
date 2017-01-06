@@ -210,12 +210,15 @@ void aes_fround( uint32 X0, uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3, uint32 *
 *	/param nbits lunghezza chiave
 *
 */
+
 int aes_set_key( aes_context *context, uint8 *key, int nbits )
 {
-    int i;
     uint32 *RK, *SK;
 	
-    switch( nbits )   /** settaggio del numero di round da effettuare in base alla lunghezza della chiave */
+    /** settaggio del numero di round da effettuare
+     *  in base alla lunghezza della chiave */
+
+    switch( nbits ) 
     {
         case 128: context->nr = 10; break;
         case 192: context->nr = 12; break;
@@ -223,9 +226,10 @@ int aes_set_key( aes_context *context, uint8 *key, int nbits )
         default : return( 1 );
     }
 	
-    RK = context->erk;			/** inizializzazione del puntatore alla chiave per ogni round */
+    /** inizializzazione del puntatore alla chiave per ogni round */
+    RK = context->erk;			
 	
-    for( i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
+    for( int i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
     {
         GET_UINT32( RK[i], key, i * 4 );
     }
@@ -234,7 +238,7 @@ int aes_set_key( aes_context *context, uint8 *key, int nbits )
     {
 		case 128:
 			
-			for( i = 0; i < 10; i++, RK += 4 )
+			for( int i = 0; i < 10; i++, RK += 4 )
 			{
 				RK[4]  = RK[0] ^ RCON[i] ^
 				( FSb[ (uint8) ( RK[3] >> 16 ) ] << 24 ) ^
@@ -250,7 +254,7 @@ int aes_set_key( aes_context *context, uint8 *key, int nbits )
 			
 		case 192:
 			
-			for( i = 0; i < 8; i++, RK += 6 )
+			for( int i = 0; i < 8; i++, RK += 6 )
 			{
 				RK[6]  = RK[0] ^ RCON[i] ^
 				( FSb[ (uint8) ( RK[5] >> 16 ) ] << 24 ) ^
@@ -268,7 +272,7 @@ int aes_set_key( aes_context *context, uint8 *key, int nbits )
 			
 		case 256:
 			
-			for( i = 0; i < 7; i++, RK += 8 )
+			for( int i = 0; i < 7; i++, RK += 8 )
 			{
 				RK[8]  = RK[0] ^ RCON[i] ^
 				( FSb[ (uint8) ( RK[7] >> 16 ) ] << 24 ) ^
@@ -423,8 +427,8 @@ void aes_encrypt( aes_context *context, uint8 input[16], uint8 output[16] )
 *	/param ptx_size plaintext size in bytes
 *
 */
-__kernel void aesEncrypt (__global const uchar* ptx_d,
-                          __global const uchar* key_d,
+__kernel void aesEncrypt (__constant const uint8* ptx_d,
+                          __constant const uint8* key_d,
                           __global uchar* ctx_d,
                           const uint key_length_d,
                           const uint ptx_size)
@@ -433,23 +437,25 @@ __kernel void aesEncrypt (__global const uchar* ptx_d,
         // We will use it to implement XTS mode of operation
         
         aes_context context;
-        unsigned char data[16];
-	unsigned char res[16];
-        unsigned char key[32];
+        uint8 data[16];
+	uint8 res[16];
+        uint8 key[32];
 	
-        // Now we are copying just the first block
-        // [TODO] Implement at least ECB
+        // Copying data into local memory to gain faster access
 
 	for(int i=0; i<16; i++)
 	{
 		data[i] = ptx_d[i];
 		res[i] = 0;
 	}
+        for(int i=0; i<(key_length_d/8); i++) {
+                key[i] = key_d[i];
+        }
 	
-	aes_set_key(&context, key_d, key_length_d);
+	aes_set_key(&context, key, key_length_d);
 	aes_encrypt(&context, data, res);
 	
-	for(int i = 0; i<16 ; i++)
+	for(int i=0; i<16 ; i++)
 	{
 		ctx_d[i] = res[i];
 	}
