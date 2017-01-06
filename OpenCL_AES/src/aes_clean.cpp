@@ -1,3 +1,5 @@
+#include "mbedtls/aes.h"  
+
 #include <utility>
 #include <CL/cl.hpp>
 
@@ -10,6 +12,8 @@
 #include <vector>
 #include <array>
 
+#define VERIFY // Enable result comparison with mbedTLS
+
 using namespace std;
 
 const unsigned int key_length = 128;         // Key size in bits
@@ -21,6 +25,17 @@ inline void checkErr(cl_int err, const char * name) {
     std::cerr << "ERROR: " << name  << " (" << err << ")" << std::endl;
     exit(EXIT_FAILURE);
   }
+}
+
+// Compare results with mbedTLS implementation
+void mbedEncrypt(const array<unsigned char, ptx_size> &ptx_h,
+		 const array<unsigned char, key_size> &key_h,
+		 array<unsigned char, ptx_size> &ctx_mbed) {
+  mbedtls_aes_context aes_ctx;                                                  
+  mbedtls_aes_init( &aes_ctx  );                                                  
+  mbedtls_aes_setkey_enc( &aes_ctx, key_h.data(), key_length );                          
+  mbedtls_aes_crypt_ecb( &aes_ctx, MBEDTLS_AES_ENCRYPT, ptx_h.data(), ctx_mbed.data() ); 
+  mbedtls_aes_free( &aes_ctx  );      
 }
 
 int main(void) {
@@ -125,18 +140,31 @@ int main(void) {
   checkErr(err, "ComamndQueue::enqueueReadBuffer()");
 
   // Print results
-  cout << "Key is:        ";
+  cout << "Key is:                ";
   for(uint i = 0; i < key_size; i++) {
     printf("%02X", key_h[i]);
   }
-  cout << endl << "Plaintext is:  ";
+  cout << endl << "Plaintext is:          ";
   for(uint i = 0; i < ptx_size; i++) {
     printf("%02X", ptx_h[i]);
   }
-  cout << endl << "Ciphertext is: ";
+  cout << endl << "Ciphertext is:         ";
   for(uint i = 0; i < ptx_size; i++) {
     printf("%02X", ctx_h[i]);
   }
   cout << endl;
+
+  #ifdef VERIFY
+  // Compare results
+  array<unsigned char, ptx_size> ctx_mbed;
+  mbedEncrypt(ptx_h, key_h, ctx_mbed);
+
+  cout << "MbedTLS ciphertext is: ";
+  for(uint i = 0; i < ptx_size; i++) {
+    printf("%02X", ctx_mbed[i]);
+  }
+  cout << endl;
+  #endif //VERIFY
+
   return EXIT_SUCCESS;
 }
