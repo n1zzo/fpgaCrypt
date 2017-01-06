@@ -424,7 +424,7 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], uint8 output[16] )
 *	/param num_d lunghezza dati
 *
 */
-__kernel void aesEncrypt ( __global const float* data_array_d, __global const float* key_d, __global float* res_d, const unsigned int size_key_d, const unsigned int num_d)
+__kernel void aesEncrypt ( __global const ulong* data_array_d, __global const ulong* key_d, __global ulong* res_d, const uint size_key_d, const uint num_d)
 {
         // [TODO] num_d parameter is actually never used!
         // We will use it to implement XTS mode of operation
@@ -434,6 +434,7 @@ __kernel void aesEncrypt ( __global const float* data_array_d, __global const fl
 	unsigned char res[16];
         unsigned char key[32];
 	
+        // [TODO] data_array_d is 64bit wide, split to 8 bit
 	for(int i=0; i<16; i++)
 	{
 		data[i] = data_array_d[i];

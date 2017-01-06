@@ -10,6 +10,7 @@
 #include <string>
 #include <CL/cl.hpp>
 #include <assert.h>
+#include <inttypes.h>
 
 using std::cout;
 using std::endl;
@@ -26,9 +27,9 @@ void checkError(const char* msg, cl_int err);
 
 int main(int argc, const char **argv)
 {
-	const unsigned int size = 32; /** Plaintext size, now we have just a single block */
+	const unsigned int size = 2; /** Plaintext size, now we have just a single block */
 	unsigned int size_key_d;      /** Key size in bits (128, 192 or 256) */
-	const unsigned int mem_size = sizeof(float)*size;
+	const unsigned int mem_size = sizeof(uint64_t)*size;
 	
 	//OpenCl variables
 	cl_platform_id platform;
@@ -43,7 +44,7 @@ int main(int argc, const char **argv)
 	cl_mem res_d;
 	cl_mem key_d;
 	cl_kernel vector_k;
-	float* res_h = new float[size];
+	uint64_t* res_h = new uint64_t[size];
 	size_t local_ws = 4;
 	
 	// Initializing the basic OpenCL environment
@@ -60,12 +61,12 @@ int main(int argc, const char **argv)
 	checkError("initialization queue", error);
 	
 	//Initializing host memory
-	float* data_array_h = new float[size];
-	
-	for (unsigned int i = 0; i < size; i++) 
+	uint64_t* data_array_h = new uint64_t[size];
+	for (unsigned int i = 0; i < (size*8); i++) 
 	{
-		data_array_h[i] =  2.0f*i;
+		((unsigned char *)data_array_h)[i] = 0x00;
 	}
+        ((unsigned char *)data_array_h)[0] = 0x80;
 	
 	//Creates the program
 	std::ifstream kernel("./src/aes_kernel_file.cl");
@@ -78,7 +79,7 @@ int main(int argc, const char **argv)
 	checkError("Creating program", error);
 	
 		//Initializing device memory
-		data_array_d = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, mem_size, res_h, &error);
+		data_array_d = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, mem_size, data_array_h, &error);
 		checkError("initialization device memory data", error);
 		
 		key_d = clCreateBuffer(context, CL_MEM_READ_ONLY, mem_size, NULL, &error);
@@ -119,14 +120,20 @@ int main(int argc, const char **argv)
 		checkError("Launching kernel", error);
 			
 		// Reading back
-		clEnqueueReadBuffer(queue, res_d, CL_TRUE, 0, mem_size, res_h, 0, NULL, NULL);
+		error = clEnqueueReadBuffer(queue, res_d, CL_TRUE, 0, mem_size, res_h, 0, NULL, NULL);
+                checkError("Reading back from device memory", error);
 
-                printf("Output block is: \n");
-                for(unsigned int i = 0; i < size; i++)
+                // Code testing
+                printf("\nInput block is: \n");
+                for(unsigned int i = 0; i < (size*8); i++)
                 {
-                        printf("%02X ", (unsigned int)res_h[i]);
+                        printf("%02X ", ((unsigned char *)data_array_h)[i]);
                 }
-                printf("\n");
+                printf("\nOutput block is: \n");
+                for(unsigned int i = 0; i < (size*8); i++)
+                {
+                        printf("%02X ", ((unsigned char *)res_h)[i]);
+                }
 
 	
 	
@@ -136,11 +143,12 @@ int main(int argc, const char **argv)
 	
 	// Cleaning up
 	delete[] data_array_h;
-	//delete[] check;
+        delete[] res_h;
 	clReleaseKernel(vector_k);
 	clReleaseCommandQueue(queue);
 	clReleaseContext(context);
 	clReleaseMemObject(data_array_d);
+        clReleaseMemObject(key_d);
 	clReleaseMemObject(res_d);
 	
 	//printf("It Run Correctly!\n");
