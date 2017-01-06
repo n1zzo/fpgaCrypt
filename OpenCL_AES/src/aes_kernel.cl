@@ -205,25 +205,25 @@ void aes_fround( uint32 X0, uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3, uint32 *
 /**
 *
 *	Settaggio della chiave per il criptaggio
-*	/param ctx contesto
+*	/param context contesto
 *	/param bey chiave iniziale
 *	/param nbits lunghezza chiave
 *
 */
-int aes_set_key( aes_context *ctx, uint8 *key, int nbits )
+int aes_set_key( aes_context *context, uint8 *key, int nbits )
 {
     int i;
     uint32 *RK, *SK;
 	
     switch( nbits )   /** settaggio del numero di round da effettuare in base alla lunghezza della chiave */
     {
-        case 128: ctx->nr = 10; break;
-        case 192: ctx->nr = 12; break;
-        case 256: ctx->nr = 14; break;
+        case 128: context->nr = 10; break;
+        case 192: context->nr = 12; break;
+        case 256: context->nr = 14; break;
         default : return( 1 );
     }
 	
-    RK = ctx->erk;			/** inizializzazione del puntatore alla chiave per ogni round */
+    RK = context->erk;			/** inizializzazione del puntatore alla chiave per ogni round */
 	
     for( i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
     {
@@ -301,12 +301,12 @@ int aes_set_key( aes_context *ctx, uint8 *key, int nbits )
 /**
 *
 *	Funzione dedicata al criptaggio
-*	/param ctx contesto
+*	/param context contesto
 *	/param input dati iniziali
 *	/param output dati criptati
 *
 */
-void aes_encrypt( aes_context *ctx, uint8 input[16], uint8 output[16] )
+void aes_encrypt( aes_context *context, uint8 input[16], uint8 output[16] )
 {
 	
     __private uint32 *RK;            /** Round key */
@@ -314,7 +314,7 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], uint8 output[16] )
     __local uint32 X0, X1, X2, X3;   /** Input blocks (shared in the wg) */
     __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
 
-    RK = ctx->erk;
+    RK = context->erk;
 	
 	idx = get_global_id(0);
 
@@ -344,7 +344,7 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], uint8 output[16] )
 		barrier(CLK_GLOBAL_MEM_FENCE);
 	}
 	
-	for(int i=0; i<ctx->nr; i++)	  /** N-1 round di criptaggio, in base alla lunghezza della chiave */
+	for(int i=0; i<context->nr; i++)	  /** N-1 round di criptaggio, in base alla lunghezza della chiave */
 	{
 		if(idx < 4)
 		{
@@ -415,41 +415,42 @@ void aes_encrypt( aes_context *ctx, uint8 input[16], uint8 output[16] )
 
 /**
 *
-*	Funzione chiamata dell'host e attraverso la quale vengono forniti
-*       i dati iniziali e i risultati.
-*	/param data_array_d dati in ingresso
-*	/param key_d chiave di criptaggio
-*	/param res_d risultato
-*	/param size_key_d lunghezza chiave
-*	/param num_d lunghezza dati
+*       Kernel entry point
+*	/param ptx_d plaintext
+*	/param key_d cipher key
+*	/param ctx_d ciphertext
+*	/param key_length_d keylength in bit
+*	/param ptx_size plaintext size in bytes
 *
 */
-__kernel void aesEncrypt ( __global const uchar* data_array_d,
-                           __global const uchar* key_d,
-                           __global uchar* res_d,
-                           const uint size_key_d,
-                           const uint num_d)
+__kernel void aesEncrypt (__global const uchar* ptx_d,
+                          __global const uchar* key_d,
+                          __global uchar* ctx_d,
+                          const uint key_length_d,
+                          const uint ptx_size)
 {
-        // [TODO] num_d parameter is actually never used!
+        // [TODO] ptx_size parameter is actually never used!
         // We will use it to implement XTS mode of operation
         
-        aes_context ctx;
+        aes_context context;
         unsigned char data[16];
 	unsigned char res[16];
         unsigned char key[32];
 	
-        // [TODO] data_array_d is 64bit wide, split to 8 bit
+        // Now we are copying just the first block
+        // [TODO] Implement at least ECB
+
 	for(int i=0; i<16; i++)
 	{
-		data[i] = data_array_d[i];
+		data[i] = ptx_d[i];
 		res[i] = 0;
 	}
 	
-	aes_set_key(&ctx, key, size_key_d);
-	aes_encrypt(&ctx, data, res);
+	aes_set_key(&context, key_d, key_length_d);
+	aes_encrypt(&context, data, res);
 	
 	for(int i = 0; i<16 ; i++)
 	{
-		res_d[i] = res[i];
+		ctx_d[i] = res[i];
 	}
 }

@@ -86,6 +86,9 @@ int main(void) {
   cl::Program::Sources source(1, std::make_pair(prog.c_str(), prog.length()+1));
   cl::Program program(context, source);
   err = program.build(devices,"");
+  cout << "Build log: "
+       << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0])
+       << endl;
   checkErr(err, "Program::build()");
   
   cl::Kernel kernel(program, "aesEncrypt", &err);
@@ -122,13 +125,13 @@ int main(void) {
   checkErr(err, "ComamndQueue::enqueueReadBuffer()");
 
   // Print results
-  cout << "Plaintext is:  ";
-  for(uint i = 0; i < ptx_size; i++) {
-    printf("%02X", ptx_h[i]);
-  }
-  cout << endl << "Key is:        ";
+  cout << "Key is:        ";
   for(uint i = 0; i < key_size; i++) {
     printf("%02X", key_h[i]);
+  }
+  cout << endl << "Plaintext is:  ";
+  for(uint i = 0; i < ptx_size; i++) {
+    printf("%02X", ptx_h[i]);
   }
   cout << endl << "Ciphertext is: ";
   for(uint i = 0; i < ptx_size; i++) {
