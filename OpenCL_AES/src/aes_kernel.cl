@@ -13,7 +13,7 @@ typedef struct
 }
 aes_context;		/** definizione del contesto */
 
-__constant static const uint32 FSb[256] =                             /** S-box per il criptaggio */
+__constant static const uint32 FSb[256] =       /** Forward S-box */
 {
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5,
     0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
@@ -160,15 +160,6 @@ void put_uint32(uint32 n, uint8 *b, uint8 i)
         b[i+3] = (uint8) ( n       );       \
 }
 
-/** Passaggio da 32 bit a 4 byte per la ricomposizione del dato criptato */
-void g_put_uint32(uint32 n, __global uint8 *b, uint8 i)
-{
-        b[i  ] = (uint8) ( n >> 24 );       \
-        b[i+1] = (uint8) ( n >> 16 );       \
-        b[i+2] = (uint8) ( n >>  8 );       \
-        b[i+3] = (uint8) ( n       );       \
-}
-
 /**
 *
 *	Funzione per l'applicazione di un singolo round dell'algoritmo AES
@@ -176,9 +167,9 @@ void g_put_uint32(uint32 n, __global uint8 *b, uint8 i)
 *	/param Y0, Y1, Y2, Y3 dati in ingresso e risultati del round precedente
 *
 */
-void aes_fround( __local uint32 *X0,
+uint32 aes_fround( __local uint32 *X0,
                  uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3,
-                 uint32 *RK, int idx)
+                 uint32 RK[], int idx)
 {
 	if(idx < 4)
 	{
@@ -190,6 +181,7 @@ void aes_fround( __local uint32 *X0,
 				FT1[ (uint8) ( Y1 >> 16 ) ] ^
 				FT2[ (uint8) ( Y2 >>  8 ) ] ^
 				FT3[ (uint8) ( Y3       ) ];
+                return Y1;
 				break;
 			case 1:
 				*X0 = RK[1] ^ FT0[ (uint8) ( Y1 >> 24 ) ] ^
@@ -222,9 +214,9 @@ void aes_fround( __local uint32 *X0,
 *
 */
 
-int aes_set_key( aes_context *context, uint8 *key, int nbits )
+int aes_set_key( aes_context *context, const uint8 *key, int nbits )
 {
-    int i;
+    unsigned int i;
     uint32 *RK, *SK;
 
     // Setting the number of round according to the key length
@@ -237,7 +229,7 @@ int aes_set_key( aes_context *context, uint8 *key, int nbits )
         default : return( 1 );
     }
 
-    /** inizializzazione del puntatore alla chiave per ogni round */
+    /** Initializing pointer to round key */
     RK = context->erk;
 
     for( i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
@@ -249,63 +241,63 @@ int aes_set_key( aes_context *context, uint8 *key, int nbits )
     {
 	case 10:
 
-	    for( i = 0; i < 10; i++, RK += 4 )
-	    {
-		RK[4]  = RK[0] ^ RCON[i] ^
-		( (uint32) FSb[ ( RK[3] >>  8 ) & 0xFF ]       ) ^
-		( (uint32) FSb[ ( RK[3] >> 16 ) & 0xFF ] <<  8 ) ^
-		( (uint32) FSb[ ( RK[3] >> 24 ) & 0xFF ] << 16 ) ^
-		( (uint32) FSb[ ( RK[3]       ) & 0xFF ] << 24 );
+        for( i = 0; i < 10; i++, RK += 4 )
+        {
+            RK[4]  = RK[0] ^ RCON[i] ^
+            ( FSb[ (uint8) ( RK[3] >> 16 ) ] << 24 ) ^
+            ( FSb[ (uint8) ( RK[3] >>  8 ) ] << 16 ) ^
+            ( FSb[ (uint8) ( RK[3]       ) ] <<  8 ) ^
+            ( FSb[ (uint8) ( RK[3] >> 24 ) ]       );
 
-		RK[5]  = RK[1] ^ RK[4];
-		RK[6]  = RK[2] ^ RK[5];
-		RK[7]  = RK[3] ^ RK[6];
-	    }
-	    break;
+            RK[5]  = RK[1] ^ RK[4];
+            RK[6]  = RK[2] ^ RK[5];
+            RK[7]  = RK[3] ^ RK[6];
+        }
+        break;
 
 	case 12:
 
-	    for( i = 0; i < 8; i++, RK += 6 )
-	    {
-		RK[6]  = RK[0] ^ RCON[i] ^
-		( (uint32) FSb[ ( RK[5] >>  8 ) & 0xFF ]       ) ^
-		( (uint32) FSb[ ( RK[5] >> 16 ) & 0xFF ] <<  8 ) ^
-		( (uint32) FSb[ ( RK[5] >> 24 ) & 0xFF ] << 16 ) ^
-		( (uint32) FSb[ ( RK[5]       ) & 0xFF ] << 24 );
+        for( i = 0; i < 8; i++, RK += 6 )
+        {
+            RK[6]  = RK[0] ^ RCON[i] ^
+            ( FSb[ (uint8) ( RK[5] >> 16 ) ] << 24 ) ^
+            ( FSb[ (uint8) ( RK[5] >>  8 ) ] << 16 ) ^
+            ( FSb[ (uint8) ( RK[5]       ) ] <<  8 ) ^
+            ( FSb[ (uint8) ( RK[5] >> 24 ) ]       );
 
-		RK[7]  = RK[1] ^ RK[6];
-		RK[8]  = RK[2] ^ RK[7];
-		RK[9]  = RK[3] ^ RK[8];
-		RK[10] = RK[4] ^ RK[9];
-		RK[11] = RK[5] ^ RK[10];
-	    }
-	    break;
+            RK[7]  = RK[1] ^ RK[6];
+            RK[8]  = RK[2] ^ RK[7];
+            RK[9]  = RK[3] ^ RK[8];
+            RK[10] = RK[4] ^ RK[9];
+            RK[11] = RK[5] ^ RK[10];
+        }
+        break;
 
-        case 14:
+    case 14:
 
-            for( i = 0; i < 7; i++, RK += 8 )
-            {
-                RK[8]  = RK[0] ^ RCON[i] ^
-                ( (uint32) FSb[ ( RK[7] >>  8 ) & 0xFF ]       ) ^
-                ( (uint32) FSb[ ( RK[7] >> 16 ) & 0xFF ] <<  8 ) ^
-                ( (uint32) FSb[ ( RK[7] >> 24 ) & 0xFF ] << 16 ) ^
-                ( (uint32) FSb[ ( RK[7]       ) & 0xFF ] << 24 );
+        for( i = 0; i < 7; i++, RK += 8 )
+        {
+            RK[8]  = RK[0] ^ RCON[i] ^
+            ( FSb[ (uint8) ( RK[7] >> 16 ) ] << 24 ) ^
+            ( FSb[ (uint8) ( RK[7] >>  8 ) ] << 16 ) ^
+            ( FSb[ (uint8) ( RK[7]       ) ] <<  8 ) ^
+            ( FSb[ (uint8) ( RK[7] >> 24 ) ]       );
 
-                RK[9]  = RK[1] ^ RK[8];
-                RK[10] = RK[2] ^ RK[9];
-                RK[11] = RK[3] ^ RK[10];
+            RK[9]  = RK[1] ^ RK[8];
+            RK[10] = RK[2] ^ RK[9];
+            RK[11] = RK[3] ^ RK[10];
 
-                RK[12] = RK[4] ^
-                ( (uint32) FSb[ ( RK[11]       ) & 0xFF ]       ) ^
-                ( (uint32) FSb[ ( RK[11] >>  8 ) & 0xFF ] <<  8 ) ^
-                ( (uint32) FSb[ ( RK[11] >> 16 ) & 0xFF ] << 16 ) ^
-                ( (uint32) FSb[ ( RK[11] >> 24 ) & 0xFF ] << 24 );
+            RK[12] = RK[4] ^
+            ( FSb[ (uint8) ( RK[11] >> 24 ) ] << 24 ) ^
+            ( FSb[ (uint8) ( RK[11] >> 16 ) ] << 16 ) ^
+            ( FSb[ (uint8) ( RK[11] >>  8 ) ] <<  8 ) ^
+            ( FSb[ (uint8) ( RK[11]       ) ]       );
 
-                RK[13] = RK[5] ^ RK[12];
-                RK[14] = RK[6] ^ RK[13];
-                RK[15] = RK[7] ^ RK[14];
-            }
-            break;
+            RK[13] = RK[5] ^ RK[12];
+            RK[14] = RK[6] ^ RK[13];
+            RK[15] = RK[7] ^ RK[14];
+        }
+        break;
     }
 
     return( 0 );
@@ -356,13 +348,26 @@ void aes_encrypt(aes_context *context, const uint8 input[16], uint8 output[16])
 				break;
 		}
 
-		barrier(CLK_GLOBAL_MEM_FENCE);
+		barrier(CLK_LOCAL_MEM_FENCE);
 	}
+
+    // The problem is that only the X variables are not shared
+    // between the various work-items, otherwise
+    // the command below should print the full string.
+
+    if(get_global_id(0) == 0) {
+        // Debug prints
+        put_uint32( X0, output, 0);
+        put_uint32( X1, output, 4);
+        put_uint32( X2, output, 8);
+        put_uint32( X3, output, 12);
+    }
 
 	/** N-1 round di criptaggio, in base alla lunghezza della chiave */
 	//for(int i=0; i<context->nr; i++)
     for(int i=0; i<1; i++)
 	{
+
 		if(idx < 4)
 		{
 			switch(idx)
@@ -380,18 +385,14 @@ void aes_encrypt(aes_context *context, const uint8 input[16], uint8 output[16])
 					aes_fround(&Y3, X0, X1, X2, X3, RK, idx);
 					break;
 			}
-			barrier(CLK_GLOBAL_MEM_FENCE);	  /** sincronizzazione tra i thread */
+
+			barrier(CLK_LOCAL_MEM_FENCE);	 /** Thread syncronization */
 
 			X0 = Y0;
 			X1 = Y1;
 			X2 = Y2;
 			X3 = Y3;
 
-            // Debug prints
-            put_uint32( X0, output, 0);
-            put_uint32( X1, output, 4);
-            put_uint32( X2, output, 8);
-            put_uint32( X3, output, 12);
 		}
 	}
 	// 						  /** ultimo round */
@@ -482,14 +483,9 @@ __kernel void aesEncrypt (__constant const uint8* ptx_d,
     // Until here the computation is the same for all the threads
 	aes_encrypt(&context, data, res);
 
-	// g_put_uint32(context.erk[4], ctx_d, 0);
-	// g_put_uint32(context.erk[5], ctx_d, 4);
-	// g_put_uint32(context.erk[6], ctx_d, 8);
-	// g_put_uint32(context.erk[7], ctx_d, 12);
-
     int idx = get_global_id(0);
     for(int i=0; i<4; i++)
     {
-        ctx_d[(idx*4)+i] = res[(idx*4)+i];
+       ctx_d[(idx*4)+i] = res[(idx*4)+i];
     }
 }

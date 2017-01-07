@@ -129,7 +129,7 @@ int main(void) {
   err = queue.enqueueNDRangeKernel(kernel,
                                    cl::NullRange,
                                    cl::NDRange(4),
-                                   cl::NDRange(1, 1),
+                                   cl::NDRange(4),
                                    NULL,
                                    &event);
   checkErr(err, "ComamndQueue::enqueueNDRangeKernel()");
