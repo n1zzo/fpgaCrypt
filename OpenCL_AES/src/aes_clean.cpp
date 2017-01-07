@@ -1,4 +1,4 @@
-#include "mbedtls/aes.h"  
+#include "mbedtls/aes.h"
 
 #include <utility>
 #include <CL/cl.hpp>
@@ -12,7 +12,7 @@
 #include <vector>
 #include <array>
 
-#define VERIFY // Enable result comparison with mbedTLS
+//#define VERIFY // Enable result comparison with mbedTLS
 
 using namespace std;
 
@@ -31,11 +31,11 @@ inline void checkErr(cl_int err, const char * name) {
 void mbedEncrypt(const array<unsigned char, ptx_size> &ptx_h,
 		 const array<unsigned char, key_size> &key_h,
 		 array<unsigned char, ptx_size> &ctx_mbed) {
-  mbedtls_aes_context aes_ctx;                                                  
-  mbedtls_aes_init( &aes_ctx  );                                                  
-  mbedtls_aes_setkey_enc( &aes_ctx, key_h.data(), key_length );                          
-  mbedtls_aes_crypt_ecb( &aes_ctx, MBEDTLS_AES_ENCRYPT, ptx_h.data(), ctx_mbed.data() ); 
-  mbedtls_aes_free( &aes_ctx  );      
+  mbedtls_aes_context aes_ctx;
+  mbedtls_aes_init( &aes_ctx  );
+  mbedtls_aes_setkey_enc( &aes_ctx, key_h.data(), key_length );
+  mbedtls_aes_crypt_ecb( &aes_ctx, MBEDTLS_AES_ENCRYPT, ptx_h.data(), ctx_mbed.data() );
+  mbedtls_aes_free( &aes_ctx  );
 }
 
 int main(void) {
@@ -56,16 +56,20 @@ int main(void) {
   checkErr(err, "Context::Context()");
 
   // Buffer creation
-  array<unsigned char, ptx_size> ptx_h;
+  array<unsigned char, ptx_size> ptx_h = {0x32, 0x43, 0xf6, 0xa8,
+                                          0x88, 0x5a, 0x30, 0x8d,
+                                          0x31, 0x31, 0x98, 0xa2,
+                                          0xe0, 0x37, 0x07, 0x34};
   array<unsigned char, ptx_size> ctx_h;
-  array<unsigned char, key_size> key_h;
+  array<unsigned char, key_size> key_h = {0x2b, 0x7e, 0x15, 0x16,
+                                          0x28, 0xae, 0xd2, 0xa6,
+                                          0xab, 0xf7, 0x15, 0x88,
+                                          0x09, 0xcf, 0x4f, 0x3c};
 
   // Data initialization
-  ptx_h.fill(0x00);
-  ctx_h.fill(0x00);
-  key_h.fill(0x00);
-
-  ptx_h[0] = 0x80;
+  //ptx_h.fill(0x00);
+  //ctx_h.fill(0x00);
+  //key_h.fill(0x00);
 
   cl::Buffer ptxBuffer(context,
                        CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
@@ -73,7 +77,7 @@ int main(void) {
                        ptx_h.data(),
                        &err);
                        checkErr(err, "Buffer::Buffer()");
-  
+
   cl::Buffer ctxBuffer(context,
                        CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
                        ptx_size,
@@ -92,7 +96,7 @@ int main(void) {
   vector<cl::Device> devices;
   devices = context.getInfo<CL_CONTEXT_DEVICES>();
   checkErr(devices.size() > 0 ? CL_SUCCESS : -1, "devices.size() > 0");
-  
+
   // Open and build kernel
   std::ifstream file("./src/aes_kernel.cl");
   checkErr(file.is_open() ? CL_SUCCESS:-1, "./src/aes_kernel.cl");
@@ -105,7 +109,7 @@ int main(void) {
        << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0])
        << endl;
   checkErr(err, "Program::build()");
-  
+
   cl::Kernel kernel(program, "aesEncrypt", &err);
   checkErr(err, "Kernel::Kernel()");
   err = kernel.setArg(0, ptxBuffer);
@@ -118,7 +122,7 @@ int main(void) {
   checkErr(err, "Kernel::setArg()");
   err = kernel.setArg(4, ptx_size);
   checkErr(err, "Kernel::setArg()");
-  
+
   // Create command queue and run kernel
   cl::CommandQueue queue(context, devices[0], 0, &err);
   checkErr(err, "CommandQueue::CommandQueue()");cl::Event event;
@@ -129,7 +133,7 @@ int main(void) {
                                    NULL,
                                    &event);
   checkErr(err, "ComamndQueue::enqueueNDRangeKernel()");
-  
+
   // Read results from device
   event.wait();
   err = queue.enqueueReadBuffer(ctxBuffer,

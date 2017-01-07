@@ -119,7 +119,7 @@ V(82,41,41,C3), V(29,99,99,B0), V(5A,2D,2D,77), V(1E,0F,0F,11), \
 V(7B,B0,B0,CB), V(A8,54,54,FC), V(6D,BB,BB,D6), V(2C,16,16,3A)
 
 /** creazione di quattro tabelle per il criptaggio parallelo */
-#define V(a,b,c,d) 0x##a##b##c##d    
+#define V(a,b,c,d) 0x##a##b##c##d
 __constant static const uint32 FT0[256] = { FT };
 #undef V
 
@@ -151,8 +151,17 @@ __constant static const uint32 RCON[10] =       /** costante per il round */
 			  ((uint32) (b)[(i) + 2] << 8  ) | \
 			  ((uint32) (b)[(i) + 3]))
 
-/** Passaggio da 32 bit a 4 per la ricomposizione del dato criptato */
+/** Passaggio da 32 bit a 4 byte per la ricomposizione del dato criptato */
 void put_uint32(uint32 n, uint8 *b, uint8 i)
+{
+        b[i  ] = (uint8) ( n >> 24 );       \
+        b[i+1] = (uint8) ( n >> 16 );       \
+        b[i+2] = (uint8) ( n >>  8 );       \
+        b[i+3] = (uint8) ( n       );       \
+}
+
+/** Passaggio da 32 bit a 4 byte per la ricomposizione del dato criptato */
+void g_put_uint32(uint32 n, __global uint8 *b, uint8 i)
 {
         b[i  ] = (uint8) ( n >> 24 );       \
         b[i+1] = (uint8) ( n >> 16 );       \
@@ -162,40 +171,42 @@ void put_uint32(uint32 n, uint8 *b, uint8 i)
 
 /**
 *
-*	Funzione per l'applicazione di un singolo round dell'algoritmo AES 
+*	Funzione per l'applicazione di un singolo round dell'algoritmo AES
 * 	/param X0 risultato del round
 *	/param Y0, Y1, Y2, Y3 dati in ingresso e risultati del round precedente
 *
 */
-void aes_fround( uint32 X0, uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3, uint32 *RK, int idx)
+void aes_fround( __local uint32 *X0,
+                 uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3,
+                 uint32 *RK, int idx)
 {
 	if(idx < 4)
 	{
-		RK += 4; 
+		RK += 4;
 		switch(idx)   /** suddivisione e criptaggio delle paraole eseguite da thread */
 		{	      /** paralleli, uno per ogni quarto di dato */
 			case 0:
-				X0 = RK[0] ^ FT0[ (uint8) ( Y0 >> 24 ) ] ^  
-				FT1[ (uint8) ( Y1 >> 16 ) ] ^  
-				FT2[ (uint8) ( Y2 >>  8 ) ] ^  
-				FT3[ (uint8) ( Y3       ) ]; 
+				*X0 = RK[0] ^ FT0[ (uint8) ( Y0 >> 24 ) ] ^
+				FT1[ (uint8) ( Y1 >> 16 ) ] ^
+				FT2[ (uint8) ( Y2 >>  8 ) ] ^
+				FT3[ (uint8) ( Y3       ) ];
 				break;
 			case 1:
-				X0 = RK[1] ^ FT0[ (uint8) ( Y1 >> 24 ) ] ^  
-				FT1[ (uint8) ( Y2 >> 16 ) ] ^  
-				FT2[ (uint8) ( Y3 >>  8 ) ] ^  
+				*X0 = RK[1] ^ FT0[ (uint8) ( Y1 >> 24 ) ] ^
+				FT1[ (uint8) ( Y2 >> 16 ) ] ^
+				FT2[ (uint8) ( Y3 >>  8 ) ] ^
 				FT3[ (uint8) ( Y0       ) ];
 				break;
 			case 2:
-				X0 = RK[2] ^ FT0[ (uint8) ( Y2 >> 24 ) ] ^  
-				FT1[ (uint8) ( Y3 >> 16 ) ] ^  
-				FT2[ (uint8) ( Y0 >>  8 ) ] ^  
+				*X0 = RK[2] ^ FT0[ (uint8) ( Y2 >> 24 ) ] ^
+				FT1[ (uint8) ( Y3 >> 16 ) ] ^
+				FT2[ (uint8) ( Y0 >>  8 ) ] ^
 				FT3[ (uint8) ( Y1       ) ];
 				break;
 			case 3:
-				X0 = RK[3] ^ FT0[ (uint8) ( Y3 >> 24 ) ] ^  
-				FT1[ (uint8) ( Y0 >> 16 ) ] ^  
-				FT2[ (uint8) ( Y1 >>  8 ) ] ^  
+				*X0 = RK[3] ^ FT0[ (uint8) ( Y3 >> 24 ) ] ^
+				FT1[ (uint8) ( Y0 >> 16 ) ] ^
+				FT2[ (uint8) ( Y1 >>  8 ) ] ^
 				FT3[ (uint8) ( Y2       ) ];
 				break;
 		}
@@ -215,90 +226,90 @@ int aes_set_key( aes_context *context, uint8 *key, int nbits )
 {
     int i;
     uint32 *RK, *SK;
-	
+
     // Setting the number of round according to the key length
 
-    switch( nbits ) 
+    switch( nbits )
     {
         case 128: context->nr = 10; break;
         case 192: context->nr = 12; break;
         case 256: context->nr = 14; break;
         default : return( 1 );
     }
-	
+
     /** inizializzazione del puntatore alla chiave per ogni round */
-    RK = context->erk;			
-	
+    RK = context->erk;
+
     for( i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
     {
-        GET_UINT32( RK[i], key, i * 4 );
+        GET_UINT32( RK[i], key, i << 2 );
     }
-	
-    switch( context->nr )                                                           
-    {                                                                           
-	case 10:                                                                
-										
-	    for( i = 0; i < 10; i++, RK += 4 )                                  
-	    {                                                                   
-		RK[4]  = RK[0] ^ RCON[i] ^                                      
-		( (uint32) FSb[ ( RK[3] >>  8 ) & 0xFF ]       ) ^            
-		( (uint32) FSb[ ( RK[3] >> 16 ) & 0xFF ] <<  8 ) ^            
-		( (uint32) FSb[ ( RK[3] >> 24 ) & 0xFF ] << 16 ) ^            
-		( (uint32) FSb[ ( RK[3]       ) & 0xFF ] << 24 );             
-										
-		RK[5]  = RK[1] ^ RK[4];                                         
-		RK[6]  = RK[2] ^ RK[5];                                         
-		RK[7]  = RK[3] ^ RK[6];                                         
-	    }                                                                   
-	    break;                                                              
-										
-	case 12:                                                                
-										
-	    for( i = 0; i < 8; i++, RK += 6 )                                   
-	    {                                                                   
-		RK[6]  = RK[0] ^ RCON[i] ^                                      
-		( (uint32) FSb[ ( RK[5] >>  8 ) & 0xFF ]       ) ^            
-		( (uint32) FSb[ ( RK[5] >> 16 ) & 0xFF ] <<  8 ) ^            
-		( (uint32) FSb[ ( RK[5] >> 24 ) & 0xFF ] << 16 ) ^            
-		( (uint32) FSb[ ( RK[5]       ) & 0xFF ] << 24 );             
-										
-		RK[7]  = RK[1] ^ RK[6];                                         
-		RK[8]  = RK[2] ^ RK[7];                                         
-		RK[9]  = RK[3] ^ RK[8];                                         
-		RK[10] = RK[4] ^ RK[9];                                         
-		RK[11] = RK[5] ^ RK[10];                                        
-	    }                                                                   
-	    break;  
 
-        case 14:                                                                
-                                                                                
-            for( i = 0; i < 7; i++, RK += 8 )                                   
-            {                                                                   
-                RK[8]  = RK[0] ^ RCON[i] ^                                      
-                ( (uint32) FSb[ ( RK[7] >>  8 ) & 0xFF ]       ) ^            
-                ( (uint32) FSb[ ( RK[7] >> 16 ) & 0xFF ] <<  8 ) ^            
-                ( (uint32) FSb[ ( RK[7] >> 24 ) & 0xFF ] << 16 ) ^            
-                ( (uint32) FSb[ ( RK[7]       ) & 0xFF ] << 24 );             
-                                                                                
-                RK[9]  = RK[1] ^ RK[8];                                         
-                RK[10] = RK[2] ^ RK[9];                                         
-                RK[11] = RK[3] ^ RK[10];                                        
-                                                                                
-                RK[12] = RK[4] ^                                                
-                ( (uint32) FSb[ ( RK[11]       ) & 0xFF ]       ) ^           
-                ( (uint32) FSb[ ( RK[11] >>  8 ) & 0xFF ] <<  8 ) ^           
-                ( (uint32) FSb[ ( RK[11] >> 16 ) & 0xFF ] << 16 ) ^           
-                ( (uint32) FSb[ ( RK[11] >> 24 ) & 0xFF ] << 24 );            
-                                                                                
-                RK[13] = RK[5] ^ RK[12];                                        
-                RK[14] = RK[6] ^ RK[13];                                        
-                RK[15] = RK[7] ^ RK[14];                                        
-            }                                                                   
-            break;                                                              
-    }                          
-	
+    switch( context->nr )
+    {
+	case 10:
+
+	    for( i = 0; i < 10; i++, RK += 4 )
+	    {
+		RK[4]  = RK[0] ^ RCON[i] ^
+		( (uint32) FSb[ ( RK[3] >>  8 ) & 0xFF ]       ) ^
+		( (uint32) FSb[ ( RK[3] >> 16 ) & 0xFF ] <<  8 ) ^
+		( (uint32) FSb[ ( RK[3] >> 24 ) & 0xFF ] << 16 ) ^
+		( (uint32) FSb[ ( RK[3]       ) & 0xFF ] << 24 );
+
+		RK[5]  = RK[1] ^ RK[4];
+		RK[6]  = RK[2] ^ RK[5];
+		RK[7]  = RK[3] ^ RK[6];
+	    }
+	    break;
+
+	case 12:
+
+	    for( i = 0; i < 8; i++, RK += 6 )
+	    {
+		RK[6]  = RK[0] ^ RCON[i] ^
+		( (uint32) FSb[ ( RK[5] >>  8 ) & 0xFF ]       ) ^
+		( (uint32) FSb[ ( RK[5] >> 16 ) & 0xFF ] <<  8 ) ^
+		( (uint32) FSb[ ( RK[5] >> 24 ) & 0xFF ] << 16 ) ^
+		( (uint32) FSb[ ( RK[5]       ) & 0xFF ] << 24 );
+
+		RK[7]  = RK[1] ^ RK[6];
+		RK[8]  = RK[2] ^ RK[7];
+		RK[9]  = RK[3] ^ RK[8];
+		RK[10] = RK[4] ^ RK[9];
+		RK[11] = RK[5] ^ RK[10];
+	    }
+	    break;
+
+        case 14:
+
+            for( i = 0; i < 7; i++, RK += 8 )
+            {
+                RK[8]  = RK[0] ^ RCON[i] ^
+                ( (uint32) FSb[ ( RK[7] >>  8 ) & 0xFF ]       ) ^
+                ( (uint32) FSb[ ( RK[7] >> 16 ) & 0xFF ] <<  8 ) ^
+                ( (uint32) FSb[ ( RK[7] >> 24 ) & 0xFF ] << 16 ) ^
+                ( (uint32) FSb[ ( RK[7]       ) & 0xFF ] << 24 );
+
+                RK[9]  = RK[1] ^ RK[8];
+                RK[10] = RK[2] ^ RK[9];
+                RK[11] = RK[3] ^ RK[10];
+
+                RK[12] = RK[4] ^
+                ( (uint32) FSb[ ( RK[11]       ) & 0xFF ]       ) ^
+                ( (uint32) FSb[ ( RK[11] >>  8 ) & 0xFF ] <<  8 ) ^
+                ( (uint32) FSb[ ( RK[11] >> 16 ) & 0xFF ] << 16 ) ^
+                ( (uint32) FSb[ ( RK[11] >> 24 ) & 0xFF ] << 24 );
+
+                RK[13] = RK[5] ^ RK[12];
+                RK[14] = RK[6] ^ RK[13];
+                RK[15] = RK[7] ^ RK[14];
+            }
+            break;
+    }
+
     return( 0 );
-	
+
 }
 
 
@@ -310,117 +321,123 @@ int aes_set_key( aes_context *context, uint8 *key, int nbits )
 *	/param output dati criptati
 *
 */
-void aes_encrypt( aes_context *context,
-		  const uint8 input[16],
-		  uint8 output[16] )
+void aes_encrypt(aes_context *context, const uint8 input[16], uint8 output[16])
 {
-	
+
     __private uint32 *RK;            /** Round key */
     __private int idx;               /** Index of the working item */
     __local uint32 X0, X1, X2, X3;   /** Input blocks (shared in the wg) */
     __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
 
     RK = context->erk;
-	
+
 	idx = get_global_id(0);
 
-        /** Round Zero */
+    /** Round Zero */
 	if(idx < 4)
 	{
 		switch(idx)		  /** adattamento dei dati ai 32 bit */
 		{
 			case 0:
 				GET_UINT32( X0, input,  0 );
-                                X0 ^= RK[0];
+                X0 ^= RK[0];
 				break;
 			case 1:
 				GET_UINT32( X1, input,  4 );
-                                X1 ^= RK[1];
+                X1 ^= RK[1];
 				break;
 			case 2:
 				GET_UINT32( X2, input,  8 );
-                                X2 ^= RK[2];
+                X2 ^= RK[2];
 				break;
 			case 3:
 				GET_UINT32( X3, input, 12 );
-                                X3 ^= RK[3];
+                X3 ^= RK[3];
 				break;
 		}
-		
+
 		barrier(CLK_GLOBAL_MEM_FENCE);
 	}
-	
+
 	/** N-1 round di criptaggio, in base alla lunghezza della chiave */
-	for(int i=0; i<context->nr; i++)	  
+	//for(int i=0; i<context->nr; i++)
+    for(int i=0; i<1; i++)
 	{
 		if(idx < 4)
 		{
 			switch(idx)
 			{
 				case 0:
-					aes_fround(Y0, X0, X1, X2, X3, RK, idx);
+					aes_fround(&Y0, X0, X1, X2, X3, RK, idx);
 					break;
 				case 1:
-					aes_fround(Y1, X0, X1, X2, X3, RK, idx);
+					aes_fround(&Y1, X0, X1, X2, X3, RK, idx);
 					break;
 				case 2:
-					aes_fround(Y2, X0, X1, X2, X3, RK, idx);
+					aes_fround(&Y2, X0, X1, X2, X3, RK, idx);
 					break;
 				case 3:
-					aes_fround(Y3, X0, X1, X2, X3, RK, idx);
+					aes_fround(&Y3, X0, X1, X2, X3, RK, idx);
 					break;
 			}
 			barrier(CLK_GLOBAL_MEM_FENCE);	  /** sincronizzazione tra i thread */
+
 			X0 = Y0;
 			X1 = Y1;
 			X2 = Y2;
 			X3 = Y3;
+
+            // Debug prints
+            put_uint32( X0, output, 0);
+            put_uint32( X1, output, 4);
+            put_uint32( X2, output, 8);
+            put_uint32( X3, output, 12);
 		}
 	}
-							  /** ultimo round */
-	RK +=4;
-	
-	
-	if(idx < 4)
-	{
-		switch(idx)
-		{
-		case 0:
-		    X0 = RK[0] ^                                               
-			    ( (uint32) FSb[ ( Y0       ) & 0xFF ]       ) ^                   
-			    ( (uint32) FSb[ ( Y1 >>  8 ) & 0xFF ] <<  8 ) ^                   
-			    ( (uint32) FSb[ ( Y2 >> 16 ) & 0xFF ] << 16 ) ^                   
-			    ( (uint32) FSb[ ( Y3 >> 24 ) & 0xFF ] << 24 );                    
-			    put_uint32( X0, output, 0);
-			    break;
-		case 1:                                                                                
-		    X1 = RK[1] ^                                                             
-			    ( (uint32) FSb[ ( Y1       ) & 0xFF ]       ) ^                   
-			    ( (uint32) FSb[ ( Y2 >>  8 ) & 0xFF ] <<  8 ) ^                   
-			    ( (uint32) FSb[ ( Y3 >> 16 ) & 0xFF ] << 16 ) ^                   
-			    ( (uint32) FSb[ ( Y0 >> 24 ) & 0xFF ] << 24 );
-			    put_uint32( X1, output, 4);    
-			    break;
-		case 2:                                                                                
-		    X2 = RK[2] ^                                                            
-			    ( (uint32) FSb[ ( Y2       ) & 0xFF ]       ) ^                   
-			    ( (uint32) FSb[ ( Y3 >>  8 ) & 0xFF ] <<  8 ) ^                   
-			    ( (uint32) FSb[ ( Y0 >> 16 ) & 0xFF ] << 16 ) ^                   
-			    ( (uint32) FSb[ ( Y1 >> 24 ) & 0xFF ] << 24 );
-			    put_uint32( X2, output, 8);                    
-			    break;
-		case 3:                                                                                
-		    X3 = RK[3] ^                                                             
-			    ( (uint32) FSb[ ( Y3       ) & 0xFF ]       ) ^                   
-			    ( (uint32) FSb[ ( Y0 >>  8 ) & 0xFF ] <<  8 ) ^                   
-			    ( (uint32) FSb[ ( Y1 >> 16 ) & 0xFF ] << 16 ) ^                   
-			    ( (uint32) FSb[ ( Y2 >> 24 ) & 0xFF ] << 24 );  
-			    put_uint32( X3, output, 12);
-			    break;
-		}
-		
-		barrier(CLK_GLOBAL_MEM_FENCE);
-	}
+	// 						  /** ultimo round */
+	// RK +=4;
+    //
+    //
+	// if(idx < 4)
+	// {
+	// 	switch(idx)
+	// 	{
+	// 	case 0:
+	// 	    X0 = RK[0] ^
+	// 		    ( (uint32) FSb[ ( Y0       ) & 0xFF ]       ) ^
+	// 		    ( (uint32) FSb[ ( Y1 >>  8 ) & 0xFF ] <<  8 ) ^
+	// 		    ( (uint32) FSb[ ( Y2 >> 16 ) & 0xFF ] << 16 ) ^
+	// 		    ( (uint32) FSb[ ( Y3 >> 24 ) & 0xFF ] << 24 );
+	// 		    put_uint32( X0, output, 0);
+	// 		    break;
+	// 	case 1:
+	// 	    X1 = RK[1] ^
+	// 		    ( (uint32) FSb[ ( Y1       ) & 0xFF ]       ) ^
+	// 		    ( (uint32) FSb[ ( Y2 >>  8 ) & 0xFF ] <<  8 ) ^
+	// 		    ( (uint32) FSb[ ( Y3 >> 16 ) & 0xFF ] << 16 ) ^
+	// 		    ( (uint32) FSb[ ( Y0 >> 24 ) & 0xFF ] << 24 );
+	// 		    put_uint32( X1, output, 4);
+	// 		    break;
+	// 	case 2:
+	// 	    X2 = RK[2] ^
+	// 		    ( (uint32) FSb[ ( Y2       ) & 0xFF ]       ) ^
+	// 		    ( (uint32) FSb[ ( Y3 >>  8 ) & 0xFF ] <<  8 ) ^
+	// 		    ( (uint32) FSb[ ( Y0 >> 16 ) & 0xFF ] << 16 ) ^
+	// 		    ( (uint32) FSb[ ( Y1 >> 24 ) & 0xFF ] << 24 );
+	// 		    put_uint32( X2, output, 8);
+	// 		    break;
+	// 	case 3:
+	// 	    X3 = RK[3] ^
+	// 		    ( (uint32) FSb[ ( Y3       ) & 0xFF ]       ) ^
+	// 		    ( (uint32) FSb[ ( Y0 >>  8 ) & 0xFF ] <<  8 ) ^
+	// 		    ( (uint32) FSb[ ( Y1 >> 16 ) & 0xFF ] << 16 ) ^
+	// 		    ( (uint32) FSb[ ( Y2 >> 24 ) & 0xFF ] << 24 );
+	// 		    put_uint32( X3, output, 12);
+	// 		    break;
+	// 	}
+    //
+	// 	barrier(CLK_GLOBAL_MEM_FENCE);
+	// }
 }
 
 
@@ -440,32 +457,39 @@ __kernel void aesEncrypt (__constant const uint8* ptx_d,
                           const uint key_length_d,
                           const uint ptx_size)
 {
-        // [TODO] ptx_size parameter is actually never used!
-        // We will use it to implement XTS mode of operation
+    // [TODO] ptx_size parameter is actually never used!
+    // We will use it to implement XTS mode of operation
 
-        // This computation is executed in parallel in every work item
-        
-        aes_context context;
-        uint8 data[16];
-	uint8 res[16];
-        uint8 key[32];
-	
-        // Copying data into local memory to gain faster access
+    // This computation is executed in parallel in every work item
+
+    aes_context context;
+    __private uint8 data[16];
+    __private uint8 res[16];
+    __private uint8 key[32];
+
+    // Copying data into local memory to gain faster access
 
 	for(int i=0; i<16; i++)
 	{
 		data[i] = ptx_d[i];
 		res[i] = 0x00;
 	}
-        for(int i=0; i<(key_length_d/8); i++) {
-                key[i] = key_d[i];
-        }
-	
+    for(int i=0; i<(key_length_d/8); i++) {
+            key[i] = key_d[i];
+    }
+
 	aes_set_key(&context, key, key_length_d);
+    // Until here the computation is the same for all the threads
 	aes_encrypt(&context, data, res);
-	
-	for(int i=0; i<16 ; i++)
-	{
-		ctx_d[i] = res[i];
-	}
+
+	// g_put_uint32(context.erk[4], ctx_d, 0);
+	// g_put_uint32(context.erk[5], ctx_d, 4);
+	// g_put_uint32(context.erk[6], ctx_d, 8);
+	// g_put_uint32(context.erk[7], ctx_d, 12);
+
+    int idx = get_global_id(0);
+    for(int i=0; i<4; i++)
+    {
+        ctx_d[(idx*4)+i] = res[(idx*4)+i];
+    }
 }
