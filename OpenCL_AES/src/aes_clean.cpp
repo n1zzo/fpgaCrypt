@@ -12,7 +12,7 @@
 #include <vector>
 #include <array>
 
-//#define VERIFY // Enable result comparison with mbedTLS
+#define VERIFY // Enable result comparison with mbedTLS
 
 using namespace std;
 
@@ -44,9 +44,18 @@ int main(void) {
   vector< cl::Platform > platformList;
   cl::Platform::get(&platformList);
   checkErr(platformList.size()!=0 ? CL_SUCCESS : -1, "cl::Platform::get");
-  std::cerr << "Platform number is: " << platformList.size() << std::endl;std::string platformVendor;
-  platformList[0].getInfo((cl_platform_info)CL_PLATFORM_VENDOR, &platformVendor);
-  std::cerr << "Platform is by: " << platformVendor << "\n";
+  std::cerr << "Platform number is: " << platformList.size() << std::endl;
+  std::string platformInfo;
+  platformList[0].getInfo((cl_platform_info)CL_PLATFORM_EXTENSIONS, &platformInfo);
+  std::cerr << "Platform extensions: " << platformInfo << "\n";
+  platformList[0].getInfo((cl_platform_info)CL_PLATFORM_NAME, &platformInfo);
+  std::cerr << "Platform name: " << platformInfo << "\n";
+  platformList[0].getInfo((cl_platform_info)CL_PLATFORM_PROFILE, &platformInfo);
+  std::cerr << "Platform profile: " << platformInfo << "\n";
+  platformList[0].getInfo((cl_platform_info)CL_PLATFORM_VENDOR, &platformInfo);
+  std::cerr << "Platform vendor: " << platformInfo << "\n";
+  platformList[0].getInfo((cl_platform_info)CL_PLATFORM_VERSION, &platformInfo);
+  std::cerr << "Platform version: " << platformInfo << "\n";
   cl_context_properties cprops[3] = {CL_CONTEXT_PLATFORM, (cl_context_properties)(platformList[0])(), 0};
   cl::Context context(CL_DEVICE_TYPE_CPU,
                       cprops,
@@ -96,6 +105,10 @@ int main(void) {
   vector<cl::Device> devices;
   devices = context.getInfo<CL_CONTEXT_DEVICES>();
   checkErr(devices.size() > 0 ? CL_SUCCESS : -1, "devices.size() > 0");
+
+  size_t maxWorkGroupSize;
+  devices[0].getInfo(CL_DEVICE_MAX_WORK_GROUP_SIZE, &maxWorkGroupSize);
+  cout << "Max work group size is: " << maxWorkGroupSize << endl;
 
   // Open and build kernel
   std::ifstream file("./src/aes_kernel.cl");

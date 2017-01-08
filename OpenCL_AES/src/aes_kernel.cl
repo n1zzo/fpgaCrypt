@@ -152,7 +152,7 @@ __constant static const uint32 RCON[10] =       /** costante per il round */
 			  ((uint32) (b)[(i) + 3]))
 
 /** Passaggio da 32 bit a 4 byte per la ricomposizione del dato criptato */
-void put_uint32(uint32 n, uint8 *b, uint8 i)
+void put_uint32(uint32 n, __local uint8 *b, uint8 i)
 {
         b[i  ] = (uint8) ( n >> 24 );       \
         b[i+1] = (uint8) ( n >> 16 );       \
@@ -167,9 +167,9 @@ void put_uint32(uint32 n, uint8 *b, uint8 i)
 *	/param Y0, Y1, Y2, Y3 dati in ingresso e risultati del round precedente
 *
 */
-uint32 aes_fround( __local uint32 *X0,
+void aes_fround( __local uint32 *X0,
                  uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3,
-                 uint32 RK[], int idx)
+                 __local uint32 RK[], int idx)
 {
 	if(idx < 4)
 	{
@@ -181,7 +181,6 @@ uint32 aes_fround( __local uint32 *X0,
 				FT1[ (uint8) ( Y1 >> 16 ) ] ^
 				FT2[ (uint8) ( Y2 >>  8 ) ] ^
 				FT3[ (uint8) ( Y3       ) ];
-                return Y1;
 				break;
 			case 1:
 				*X0 = RK[1] ^ FT0[ (uint8) ( Y1 >> 24 ) ] ^
@@ -214,10 +213,10 @@ uint32 aes_fround( __local uint32 *X0,
 *
 */
 
-int aes_set_key( aes_context *context, const uint8 *key, int nbits )
+int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbits )
 {
     unsigned int i;
-    uint32 *RK, *SK;
+    __local uint32 *RK, *SK;
 
     // Setting the number of round according to the key length
 
@@ -313,10 +312,12 @@ int aes_set_key( aes_context *context, const uint8 *key, int nbits )
 *	/param output dati criptati
 *
 */
-void aes_encrypt(aes_context *context, const uint8 input[16], uint8 output[16])
+__kernel void aes_encrypt(__local aes_context *context,
+                          __local const uint8 input[16],
+                          __local uint8 output[16])
 {
 
-    __private uint32 *RK;            /** Round key */
+    __local uint32 *RK;            /** Round key */
     __private int idx;               /** Index of the working item */
     __local uint32 X0, X1, X2, X3;   /** Input blocks (shared in the wg) */
     __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
@@ -351,25 +352,14 @@ void aes_encrypt(aes_context *context, const uint8 input[16], uint8 output[16])
 		barrier(CLK_LOCAL_MEM_FENCE);
 	}
 
-    // The problem is that only the X variables are not shared
-    // between the various work-items, otherwise
-    // the command below should print the full string.
-
-    if(get_global_id(0) == 0) {
-        // Debug prints
-        put_uint32( X0, output, 0);
-        put_uint32( X1, output, 4);
-        put_uint32( X2, output, 8);
-        put_uint32( X3, output, 12);
-    }
 
 	/** N-1 round di criptaggio, in base alla lunghezza della chiave */
-	//for(int i=0; i<context->nr; i++)
-    for(int i=0; i<1; i++)
+	for(int i=0; i<(context->nr-1); i++)
 	{
-
 		if(idx < 4)
 		{
+			barrier(CLK_LOCAL_MEM_FENCE);	 /** Thread syncronization */
+
 			switch(idx)
 			{
 				case 0:
@@ -392,53 +382,49 @@ void aes_encrypt(aes_context *context, const uint8 input[16], uint8 output[16])
 			X1 = Y1;
 			X2 = Y2;
 			X3 = Y3;
+            RK += 4;
 
 		}
 	}
-	// 						  /** ultimo round */
-	// RK +=4;
-    //
-    //
-	// if(idx < 4)
-	// {
-	// 	switch(idx)
-	// 	{
-	// 	case 0:
-	// 	    X0 = RK[0] ^
-	// 		    ( (uint32) FSb[ ( Y0       ) & 0xFF ]       ) ^
-	// 		    ( (uint32) FSb[ ( Y1 >>  8 ) & 0xFF ] <<  8 ) ^
-	// 		    ( (uint32) FSb[ ( Y2 >> 16 ) & 0xFF ] << 16 ) ^
-	// 		    ( (uint32) FSb[ ( Y3 >> 24 ) & 0xFF ] << 24 );
-	// 		    put_uint32( X0, output, 0);
-	// 		    break;
-	// 	case 1:
-	// 	    X1 = RK[1] ^
-	// 		    ( (uint32) FSb[ ( Y1       ) & 0xFF ]       ) ^
-	// 		    ( (uint32) FSb[ ( Y2 >>  8 ) & 0xFF ] <<  8 ) ^
-	// 		    ( (uint32) FSb[ ( Y3 >> 16 ) & 0xFF ] << 16 ) ^
-	// 		    ( (uint32) FSb[ ( Y0 >> 24 ) & 0xFF ] << 24 );
-	// 		    put_uint32( X1, output, 4);
-	// 		    break;
-	// 	case 2:
-	// 	    X2 = RK[2] ^
-	// 		    ( (uint32) FSb[ ( Y2       ) & 0xFF ]       ) ^
-	// 		    ( (uint32) FSb[ ( Y3 >>  8 ) & 0xFF ] <<  8 ) ^
-	// 		    ( (uint32) FSb[ ( Y0 >> 16 ) & 0xFF ] << 16 ) ^
-	// 		    ( (uint32) FSb[ ( Y1 >> 24 ) & 0xFF ] << 24 );
-	// 		    put_uint32( X2, output, 8);
-	// 		    break;
-	// 	case 3:
-	// 	    X3 = RK[3] ^
-	// 		    ( (uint32) FSb[ ( Y3       ) & 0xFF ]       ) ^
-	// 		    ( (uint32) FSb[ ( Y0 >>  8 ) & 0xFF ] <<  8 ) ^
-	// 		    ( (uint32) FSb[ ( Y1 >> 16 ) & 0xFF ] << 16 ) ^
-	// 		    ( (uint32) FSb[ ( Y2 >> 24 ) & 0xFF ] << 24 );
-	// 		    put_uint32( X3, output, 12);
-	// 		    break;
-	// 	}
-    //
-	// 	barrier(CLK_GLOBAL_MEM_FENCE);
-	// }
+							  /** ultimo round */
+	RK += 4;
+
+    if(idx < 4)
+    	{
+    		switch(idx)
+    		{
+    			case 0:
+    				X0 = RK[0] ^ ( FSb[ (uint8) ( Y0 >> 24 ) ] << 24 ) ^
+    				( FSb[ (uint8) ( Y1 >> 16 ) ] << 16 ) ^
+    				( FSb[ (uint8) ( Y2 >>  8 ) ] <<  8 ) ^
+    				( FSb[ (uint8) ( Y3       ) ]       );
+    				put_uint32( X0, output,  0 );
+    				break;
+    			case 1:
+    				X1 = RK[1] ^ ( FSb[ (uint8) ( Y1 >> 24 ) ] << 24 ) ^
+    				( FSb[ (uint8) ( Y2 >> 16 ) ] << 16 ) ^
+    				( FSb[ (uint8) ( Y3 >>  8 ) ] <<  8 ) ^
+    				( FSb[ (uint8) ( Y0       ) ]       );
+    				put_uint32( X1, output,  4 );
+    				break;
+    			case 2:
+    				X2 = RK[2] ^ ( FSb[ (uint8) ( Y2 >> 24 ) ] << 24 ) ^
+    				( FSb[ (uint8) ( Y3 >> 16 ) ] << 16 ) ^
+    				( FSb[ (uint8) ( Y0 >>  8 ) ] <<  8 ) ^
+    				( FSb[ (uint8) ( Y1       ) ]       );
+    				put_uint32( X2, output,  8 );
+    				break;
+    			case 3:
+    				X3 = RK[3] ^ ( FSb[ (uint8) ( Y3 >> 24 ) ] << 24 ) ^
+    				( FSb[ (uint8) ( Y0 >> 16 ) ] << 16 ) ^
+    				( FSb[ (uint8) ( Y1 >>  8 ) ] <<  8 ) ^
+    				( FSb[ (uint8) ( Y2       ) ]       );
+    				put_uint32( X3, output, 12 );
+    				break;
+    		}
+
+    barrier(CLK_GLOBAL_MEM_FENCE);
+	}
 }
 
 
@@ -461,12 +447,12 @@ __kernel void aesEncrypt (__constant const uint8* ptx_d,
     // [TODO] ptx_size parameter is actually never used!
     // We will use it to implement XTS mode of operation
 
-    // This computation is executed in parallel in every work item
+    // This computation just single threaded
 
-    aes_context context;
-    __private uint8 data[16];
-    __private uint8 res[16];
-    __private uint8 key[32];
+    __local aes_context context;
+    __local uint8 data[16];
+    __local uint8 res[16];
+    __local uint8 key[32];
 
     // Copying data into local memory to gain faster access
 
@@ -480,7 +466,6 @@ __kernel void aesEncrypt (__constant const uint8* ptx_d,
     }
 
 	aes_set_key(&context, key, key_length_d);
-    // Until here the computation is the same for all the threads
 	aes_encrypt(&context, data, res);
 
     int idx = get_global_id(0);
