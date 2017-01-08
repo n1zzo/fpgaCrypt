@@ -181,6 +181,11 @@ int main(void) {
     printf("%02X", ctx_mbed[i]);
   }
   cout << endl;
+
+  if (ctx_h == ctx_mbed)
+    cout << "CORRECT: the ciphertexts match!" << endl;
+  else
+    cout << "WRONG: the ciphertexts do not match!" << endl;
   #endif //VERIFY
 
   return EXIT_SUCCESS;
