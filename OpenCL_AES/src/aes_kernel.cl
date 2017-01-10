@@ -13,7 +13,7 @@ typedef struct
 }
 aes_context;		/** definizione del contesto */
 
-__constant static const uint32 FSb[256] =       /** Forward S-box */
+__constant const uint32 FSb[256] =       /** Forward S-box */
 {
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5,
     0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
@@ -120,24 +120,24 @@ V(7B,B0,B0,CB), V(A8,54,54,FC), V(6D,BB,BB,D6), V(2C,16,16,3A)
 
 /** creazione di quattro tabelle per il criptaggio parallelo */
 #define V(a,b,c,d) 0x##a##b##c##d
-__constant static const uint32 FT0[256] = { FT };
+__constant const uint32 FT0[256] = { FT };
 #undef V
 
 #define V(a,b,c,d) 0x##d##a##b##c
-__constant static const uint32 FT1[256] = { FT };
+__constant const uint32 FT1[256] = { FT };
 #undef V
 
 #define V(a,b,c,d) 0x##c##d##a##b
-__constant static const uint32 FT2[256] = { FT };
+__constant const uint32 FT2[256] = { FT };
 #undef V
 
 #define V(a,b,c,d) 0x##b##c##d##a
-__constant static const uint32 FT3[256] = { FT };
+__constant const uint32 FT3[256] = { FT };
 #undef V
 
 #undef FT
 
-__constant static const uint32 RCON[10] =       /** costante per il round */
+__constant const uint32 RCON[10] =       /** costante per il round */
 {
     0x01000000, 0x02000000, 0x04000000, 0x08000000,
     0x10000000, 0x20000000, 0x40000000, 0x80000000,
@@ -313,8 +313,8 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 *
 */
 __kernel void aes_encrypt(__local aes_context *context,
-                          __local const uint8 input[16],
-                          __local uint8 output[16])
+                          __local const uint8 *input,
+                          __local uint8 *output)
 {
 
     __local uint32 *RK;            /** Round key */
