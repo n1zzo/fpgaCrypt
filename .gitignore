@@ -3,3 +3,6 @@
 
 # Executable
 Opencl_AES/aesopencl
+
+# Documentation
+*.pdf
