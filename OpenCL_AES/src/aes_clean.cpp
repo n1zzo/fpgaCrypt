@@ -57,7 +57,7 @@ int main(void) {
   platformList[0].getInfo((cl_platform_info)CL_PLATFORM_VERSION, &platformInfo);
   std::cerr << "Platform version: " << platformInfo << "\n";
   cl_context_properties cprops[3] = {CL_CONTEXT_PLATFORM, (cl_context_properties)(platformList[0])(), 0};
-  cl::Context context(CL_DEVICE_TYPE_CPU,
+  cl::Context context(CL_DEVICE_TYPE_ALL,
                       cprops,
                       NULL,
                       NULL,
@@ -111,8 +111,8 @@ int main(void) {
   cout << "Max work group size is: " << maxWorkGroupSize << endl;
 
   // Open and build kernel
-  std::ifstream file("./src/aes_kernel.cl");
-  checkErr(file.is_open() ? CL_SUCCESS:-1, "./src/aes_kernel.cl");
+  std::ifstream file("../src/aes_kernel.cl");
+  checkErr(file.is_open() ? CL_SUCCESS:-1, "../src/aes_kernel.cl");
   std::string prog(std::istreambuf_iterator<char>(file),
                    (std::istreambuf_iterator<char>()));
   cl::Program::Sources source(1, std::make_pair(prog.c_str(), prog.length()+1));
@@ -189,4 +189,6 @@ int main(void) {
   #endif //VERIFY
 
   return EXIT_SUCCESS;
+  
+  // [TODO] Add opencl cleanup code
 }
