@@ -1,7 +1,8 @@
 #include "mbedtls/aes.h"
+#include "AOCLUtils/aocl_utils.h"
 
 #include <utility>
-#include <CL/cl.hpp>
+#include <CL/cl2.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -12,9 +13,16 @@
 #include <vector>
 #include <array>
 
-#define VERIFY // Enable result comparison with mbedTLS
+#define VERIFY    // Enable result comparison with mbedTLS
+
+#define INTELFPGA // External Kernel compilation
+
+#ifndef INTELFPGA 
+#define STDOPENCL // Standard OpenCl Kernel compilation
+#endif // INTELFPGA
 
 using namespace std;
+using namespace aocl_utils;
 
 const unsigned int key_length = 128;         // Key size in bits
 const unsigned int key_size = key_length/8;  // Key size in bytes
@@ -112,6 +120,7 @@ int main(void) {
   devices[0].getInfo(CL_DEVICE_MAX_WORK_GROUP_SIZE, &maxWorkGroupSize);
   cout << "Max work group size is: " << maxWorkGroupSize << endl;
 
+#ifdef STDOPENCL
   // Open and build kernel
   std::ifstream file("../src/aes_kernel.cl");
   checkErr(file.is_open() ? CL_SUCCESS:-1, "../src/aes_kernel.cl");
@@ -124,6 +133,15 @@ int main(void) {
        << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0])
        << endl;
   checkErr(err, "Program::build()");
+#endif // STDOPENCL
+
+#ifdef INTELFPGA
+  // Create the program
+  string binary_file = getBoardBinaryFile("aes_kernel", devices[0]());
+  printf("Using AOCX: %s\n", binary_file.c_str());
+  cl_program p = createProgramFromBinary(context(), binary_file.c_str(), &(devices[0]()), 1);
+  cl::Program program = cl::Program(p, false);
+#endif // INTELFPGA
 
   cl::Kernel kernel(program, "aesEncrypt", &err);
   checkErr(err, "Kernel::Kernel()");

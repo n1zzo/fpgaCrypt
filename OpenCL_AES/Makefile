@@ -3,10 +3,10 @@ CC         = g++
 CFLAGS     = -Wall -pedantic -march=native -pipe -O3 -std=c++11
 LDFLAGS    = -lOpenCL -lmbedcrypto
 SRCDIR     = ./src
-INCLUDE    = -I /usr/include -I ../mbedtls/include/
+INCLUDE    = -I /usr/include -I ../mbedtls/include/ -I ./common/inc
 LIBDIR     = ../mbedtls/library
 BINDIR     = ./bin
-SOURCES    = $(SRCDIR)/aes_clean.cpp $(SRCDIR)/cl_errors.cpp
+SOURCES    = $(SRCDIR)/aes_clean.cpp $(SRCDIR)/cl_errors.cpp ./common/src/AOCLUtils/*.cpp
 KERNELS    = $(SRCDIR)/aes_kernel.cl
 AOCX       = $(KERNELS:.cl=.aocx)
 OBJECTS    = $(SOURCES:.c=.o)
@@ -27,6 +27,7 @@ debug: all
 emu: host $(AOCX)
 
 host: LDFLAGS += $(shell aocl linkflags)
+host: LDFLAGS += -I /mnt/residential_zone/home/gpg_keyserver/intelFPGA_pro/16.1/hld/host/include20/
 host: all
 
 $(SRCDIR)/%.aocx: $(SRCDIR)/%.cl
