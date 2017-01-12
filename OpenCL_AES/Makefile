@@ -1,27 +1,40 @@
 NAME       = aesopencl
 CC         = g++
-CFLAGS     = -Wall -pedantic -march=native -pipe -O3 -std=c++11 -I $(INCDIR)
+CFLAGS     = -Wall -pedantic -march=native -pipe -O3 -std=c++11
 LDFLAGS    = -lOpenCL -lmbedcrypto
-EMULDFLAGS = -L/mnt/residential_zone/home/gpg_keyserver/intelFPGA/16.1/hld/board/s5_ref/linux64/lib -L/mnt/residential_zone/home/gpg_keyserver/intelFPGA/16.1/hld/host/linux64/lib -Wl,--no-as-needed -lalteracl -laltera_s5_ref_mmd -lelf
 SRCDIR     = ./src
-INCDIR     = /usr/include/CL:../mbedtls/include 
+INCLUDE    = -I /usr/include -I ../mbedtls/include/
 LIBDIR     = ../mbedtls/library
-BINDIR     = /usr/local/bin
+BINDIR     = ./bin
 SOURCES    = $(SRCDIR)/aes_clean.cpp
-KERNELS    = $(SRCDIR)/aes_kernel_file.cl
+KERNELS    = $(SRCDIR)/aes_kernel.cl
+AOCX       = $(KERNELS:.cl=.aocx)
 OBJECTS    = $(SOURCES:.c=.o)
+BOARD      = s5_ref
 
 all: $(NAME)
 
 $(NAME): $(OBJECTS)
-	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS) $(EMULDFLAGS)
-	@mv $@ bin
+	$(CC) $(INCLUDE) $^ -o $@ $(CFLAGS) $(LDFLAGS)
+	@mv $@ $(BINDIR)
 
-$(SRCDIR)/%.o: %.c
-	$(CC) $^ -c $< $(CFLAGS) $(LDFLAGS)
+$(SRCDIR)/%.o: %.cpp
+	$(CC) $(INCLUDE) $^ -c $< $(CFLAGS) $(LDFLAGS)
 
 debug: CFLAGS = -g -Wall -pedantic -O0 -I $(INCDIR) -L $(LIBDIR)
 debug: all
 
+emu: host $(AOCX)
+
+host: LDFLAGS += $(shell aocl linkflags)
+host: all
+
+$(SRCDIR)/%.aocx: $(SRCDIR)/%.cl
+	aoc -march=emulator -v --board $(BOARD) $^ -o $@
+	@mv $@ $(BINDIR)
+
 clean:
-	rm *.o $(NAME)
+	rm $(BINDIR)/*
+	rm nfa_regexp_debug.log nfa_regexp_dump.log nfa_regexp_run.log
+	rm -rf $(SRCDIR)/aes_kernel $(SRCDIR)/aes_kernel.aoco
+
