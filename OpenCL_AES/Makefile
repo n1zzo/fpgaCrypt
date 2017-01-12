@@ -6,7 +6,7 @@ SRCDIR     = ./src
 INCLUDE    = -I /usr/include -I ../mbedtls/include/
 LIBDIR     = ../mbedtls/library
 BINDIR     = ./bin
-SOURCES    = $(SRCDIR)/aes_clean.cpp
+SOURCES    = $(SRCDIR)/aes_clean.cpp $(SRCDIR)/cl_errors.cpp
 KERNELS    = $(SRCDIR)/aes_kernel.cl
 AOCX       = $(KERNELS:.cl=.aocx)
 OBJECTS    = $(SOURCES:.c=.o)
