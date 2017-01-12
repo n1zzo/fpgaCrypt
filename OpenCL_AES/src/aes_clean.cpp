@@ -30,6 +30,11 @@ const unsigned int ptx_size = 16;            // Plaintext size in bytes
 
 const char *getErrorString(cl_int error);
 
+// Cleanup code used by aocl_utils
+void cleanup() {
+  ;
+}
+
 inline void checkErr(cl_int err, const char * name) {
   if (err != CL_SUCCESS) {
     std::cerr << "ERROR: " << name  << " (" << getErrorString(err) << ")" << std::endl;

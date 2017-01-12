@@ -243,7 +243,6 @@ void _checkError(int line,
     va_end(vl);
 
     // Cleanup and bail.
-    cleanup();
     exit(error);
   }
 }
