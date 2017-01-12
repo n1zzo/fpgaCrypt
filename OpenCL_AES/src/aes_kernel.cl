@@ -312,9 +312,9 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 *	/param output dati criptati
 *
 */
-__kernel void aes_encrypt(__local aes_context *context,
-                          __local const uint8 *input,
-                          __local uint8 *output)
+__kernel void aes_encrypt(__local aes_context* restrict context,
+                          __local const uint8* restrict input,
+                          __local uint8* restrict output)
 {
 
     __local uint32 *RK;            /** Round key */
@@ -438,9 +438,9 @@ __kernel void aes_encrypt(__local aes_context *context,
 *	/param ptx_size plaintext size in bytes
 *
 */
-__kernel void aesEncrypt (__constant const uint8* ptx_d,
-                          __constant const uint8* key_d,
-                          __global uchar* ctx_d,
+__kernel void aesEncrypt (__constant const uint8* restrict ptx_d,
+                          __constant const uint8* restrict key_d,
+                          __global uint8* restrict ctx_d,
                           const uint key_length_d,
                           const uint ptx_size)
 {

@@ -28,11 +28,14 @@ emu: host $(AOCX)
 
 host: LDFLAGS += $(shell aocl linkflags)
 host: LDFLAGS += -I /mnt/residential_zone/home/gpg_keyserver/intelFPGA_pro/16.1/hld/host/include20/
-host: all
+host: $(NAME)
 
 $(SRCDIR)/%.aocx: $(SRCDIR)/%.cl
 	aoc -march=emulator -v --board $(BOARD) $^ -o $@
 	@mv $@ $(BINDIR)
+
+run: 
+	cd $(BINDIR); env CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 ./$(NAME)
 
 clean:
 	rm $(BINDIR)/*
