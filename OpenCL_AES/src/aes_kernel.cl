@@ -303,28 +303,53 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 
 }
 
-
 /**
 *
-*	Funzione dedicata al criptaggio
-*	/param context contesto
-*	/param input dati iniziali
-*	/param output dati criptati
+*       Kernel entry point
+*	/param ptx_d plaintext
+*	/param key_d cipher key
+*	/param ctx_d ciphertext
+*	/param key_length_d keylength in bit
+*	/param ptx_size plaintext size in bytes
 *
 */
-__kernel void aes_encrypt(__local aes_context* restrict context,
-                          __local const uint8* restrict input,
-                          __local uint8* restrict output)
+__kernel void aesEncrypt (__constant const uint8* restrict ptx_d,
+                          __constant const uint8* restrict key_d,
+                          __global uint8* restrict ctx_d,
+                          const uint key_length_d,
+                          const uint ptx_size)
 {
+    // [TODO] ptx_size parameter is actually never used!
+    // We will use it to implement XTS mode of operation
+
+    // This computation just single threaded
+
+    __local aes_context context;
+    __local uint8 input[16];
+    __local uint8 output[16];
+    __local uint8 key[32];
+
+    // Copying data into local memory to gain faster access
+
+    for(int i=0; i<16; i++)
+    {
+	input[i] = ptx_d[i];
+	output[i] = 0x00;
+    }
+    for(int i=0; i<(key_length_d/8); i++) {
+        key[i] = key_d[i];
+    }
+
+    aes_set_key(&context, key, key_length_d);
 
     __local uint32 *RK;            /** Round key */
     __private int idx;               /** Index of the working item */
     __local uint32 X0, X1, X2, X3;   /** Input blocks (shared in the wg) */
     __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
 
-    RK = context->erk;
+    RK = context.erk;
 
-	idx = get_global_id(0);
+    idx = get_global_id(0);
 
     /** Round Zero */
 	if(idx < 4)
@@ -354,7 +379,7 @@ __kernel void aes_encrypt(__local aes_context* restrict context,
 
 
 	/** N-1 round di criptaggio, in base alla lunghezza della chiave */
-	for(int i=0; i<(context->nr-1); i++)
+	for(int i=0; i<(context.nr-1); i++)
 	{
 		if(idx < 4)
 		{
@@ -424,53 +449,12 @@ __kernel void aes_encrypt(__local aes_context* restrict context,
     		}
 
     barrier(CLK_GLOBAL_MEM_FENCE);
-	}
-}
-
-
-/**
-*
-*       Kernel entry point
-*	/param ptx_d plaintext
-*	/param key_d cipher key
-*	/param ctx_d ciphertext
-*	/param key_length_d keylength in bit
-*	/param ptx_size plaintext size in bytes
-*
-*/
-__kernel void aesEncrypt (__constant const uint8* restrict ptx_d,
-                          __constant const uint8* restrict key_d,
-                          __global uint8* restrict ctx_d,
-                          const uint key_length_d,
-                          const uint ptx_size)
-{
-    // [TODO] ptx_size parameter is actually never used!
-    // We will use it to implement XTS mode of operation
-
-    // This computation just single threaded
-
-    __local aes_context context;
-    __local uint8 data[16];
-    __local uint8 res[16];
-    __local uint8 key[32];
-
-    // Copying data into local memory to gain faster access
-
-	for(int i=0; i<16; i++)
-	{
-		data[i] = ptx_d[i];
-		res[i] = 0x00;
-	}
-    for(int i=0; i<(key_length_d/8); i++) {
-            key[i] = key_d[i];
     }
 
-	aes_set_key(&context, key, key_length_d);
-	aes_encrypt(&context, data, res);
+    // Copy results back into host memory
 
-    int idx = get_global_id(0);
     for(int i=0; i<4; i++)
     {
-       ctx_d[(idx*4)+i] = res[(idx*4)+i];
+       ctx_d[(idx*4)+i] = output[(idx*4)+i];
     }
 }

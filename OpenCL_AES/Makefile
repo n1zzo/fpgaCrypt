@@ -1,5 +1,5 @@
 NAME       = aesopencl
-CC         = g++
+CC	 = g++
 CFLAGS     = -Wall -pedantic -march=native -pipe -O3 -std=c++11
 LDFLAGS    = -lOpenCL -lmbedcrypto
 SRCDIR     = ./src
@@ -24,6 +24,12 @@ $(SRCDIR)/%.o: %.cpp
 debug: CFLAGS = -g -Wall -pedantic -O0 -I $(INCDIR) -L $(LIBDIR)
 debug: all
 
+fpga: host $(AOCX)
+
+profile: AOCFLAGS = --profile
+profile: host $(AOCX)
+
+emu: AOCFLAGS = -march=emulator
 emu: host $(AOCX)
 
 host: LDFLAGS += $(shell aocl linkflags)
@@ -31,7 +37,7 @@ host: LDFLAGS += -I /mnt/residential_zone/home/gpg_keyserver/intelFPGA_pro/16.1/
 host: $(NAME)
 
 $(SRCDIR)/%.aocx: $(SRCDIR)/%.cl
-	aoc -march=emulator -v --board $(BOARD) $^ -o $@
+	aoc $(AOCFLAGS) -v --board $(BOARD) $^ -o $@
 	@mv $@ $(BINDIR)
 
 run: 
