@@ -313,7 +313,8 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 *	/param ptx_size plaintext size in bytes
 *
 */
-__kernel void aesEncrypt (__constant const uint8* restrict ptx_d,
+__kernel __attribute__((reqd_work_group_size(4, 1, 1)))
+void aesEncrypt (__constant const uint8* restrict ptx_d,
                           __constant const uint8* restrict key_d,
                           __global uint8* restrict ctx_d,
                           const uint key_length_d,
