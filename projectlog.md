@@ -23,8 +23,4 @@ Zoni proposes the following suggestions:
 
 Use NIST benchmarks for testing AES.
 
-We have chosen this implementation because it leverages OpenCL 2.0 SVM,
-since this feature is supported by the Altera OpenCL SDK.
-
-[AES OpenCL Implementation](https://github.com/cartermc24/AES-OpenCL)
-
+[AES-XTS implementation for mbedtls](https://github.com/ARMmbed/mbedtls/pull/414/files)
