@@ -231,6 +231,7 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
     /** Initializing pointer to round key */
     RK = context->erk;
 
+    #pragma unroll 8
     for( i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
     {
         GET_UINT32( RK[i], key, i << 2 );
@@ -240,6 +241,7 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
     {
 	case 10:
 
+        #pragma unroll
         for( i = 0; i < 10; i++, RK += 4 )
         {
             RK[4]  = RK[0] ^ RCON[i] ^
@@ -256,6 +258,7 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 
 	case 12:
 
+        #pragma unroll
         for( i = 0; i < 8; i++, RK += 6 )
         {
             RK[6]  = RK[0] ^ RCON[i] ^
@@ -274,6 +277,7 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 
     case 14:
 
+        #pragma unroll
         for( i = 0; i < 7; i++, RK += 8 )
         {
             RK[8]  = RK[0] ^ RCON[i] ^
@@ -332,11 +336,13 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
 
     // Copying data into local memory to gain faster access
 
+    #pragma unroll
     for(int i=0; i<16; i++)
     {
 	input[i] = ptx_d[i];
 	output[i] = 0x00;
     }
+    #pragma unroll 32
     for(int i=0; i<(key_length_d/8); i++) {
         key[i] = key_d[i];
     }
@@ -380,6 +386,7 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
 
 
 	/** N-1 round di criptaggio, in base alla lunghezza della chiave */
+        #pragma unroll 13
 	for(int i=0; i<(context.nr-1); i++)
 	{
 		if(idx < 4)
@@ -454,6 +461,7 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
 
     // Copy results back into host memory
 
+    #pragma unroll
     for(int i=0; i<4; i++)
     {
        ctx_d[(idx*4)+i] = output[(idx*4)+i];
