@@ -17,7 +17,7 @@
 
 #define INTELFPGA // External Kernel compilation
 
-#ifndef INTELFPGA 
+#ifndef INTELFPGA
 #define STDOPENCL // Standard OpenCl Kernel compilation
 #endif // INTELFPGA
 
@@ -53,7 +53,7 @@ void mbedEncrypt(const array<unsigned char, ptx_size> &ptx_h,
   mbedtls_aes_free( &aes_ctx  );
 }
 
-int main(void) {
+cl::Context initOpenclPlatform() {
   // Opencl Device introspection
   cl_int err;
   vector< cl::Platform > platformList;
@@ -78,6 +78,55 @@ int main(void) {
                       NULL,
                       &err);
   checkErr(err, "Context::Context()");
+  return context;
+}
+
+cl::Kernel createOpenClKernel(const cl::Context &context,
+                              const vector<cl::Device> &devices,
+                              const string &sourcePath,
+                              const string &kernelName) {
+  cl_int err;
+
+
+
+  size_t maxWorkGroupSize;
+  devices[0].getInfo(CL_DEVICE_MAX_WORK_GROUP_SIZE, &maxWorkGroupSize);
+  cout << "Max work group size is: " << maxWorkGroupSize << endl;
+
+  #ifdef STDOPENCL
+    // Open and build kernel
+    std::ifstream file(sourcePath);
+    checkErr(file.is_open() ? CL_SUCCESS:-1, sourcePath);
+    std::string prog(std::istreambuf_iterator<char>(file),
+                     (std::istreambuf_iterator<char>()));
+    cl::Program::Sources source(1, std::make_pair(prog.c_str(), prog.length()+1));
+    cl::Program program(context, source);
+    err = program.build(devices,"");
+    cout << "Build log: "
+         << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0])
+         << endl;
+    checkErr(err, "Program::build()");
+  #endif // STDOPENCL
+
+  #ifdef INTELFPGA
+    // Create the program
+    string binary_file = getBoardBinaryFile(sourcePath.c_str(), devices[0]());
+    printf("Using AOCX: %s\n", binary_file.c_str());
+    cl_program p = createProgramFromBinary(context(), binary_file.c_str(), &(devices[0]()), 1);
+    cl::Program program = cl::Program(p, false);
+  #endif // INTELFPGA
+
+  cl::Kernel kernel(program, kernelName.c_str(), &err);
+  checkErr(err, "Kernel::Kernel()");
+
+  return kernel;
+}
+
+int main(void) {
+  cl_int err;
+
+  // Initialize opencl board
+  cl::Context context = initOpenclPlatform();
 
   // Buffer creation
   array<unsigned char, ptx_size> ptx_h = {0x32, 0x43, 0xf6, 0xa8,
@@ -116,35 +165,11 @@ int main(void) {
   devices = context.getInfo<CL_CONTEXT_DEVICES>();
   checkErr(devices.size() > 0 ? CL_SUCCESS : -1, "devices.size() > 0");
 
-  size_t maxWorkGroupSize;
-  devices[0].getInfo(CL_DEVICE_MAX_WORK_GROUP_SIZE, &maxWorkGroupSize);
-  cout << "Max work group size is: " << maxWorkGroupSize << endl;
+  cl::Kernel kernel = createOpenClKernel(context,
+                                         devices,
+                                         "../src/aes_kernel.cl",
+                                         "aes_kernel");
 
-#ifdef STDOPENCL
-  // Open and build kernel
-  std::ifstream file("../src/aes_kernel.cl");
-  checkErr(file.is_open() ? CL_SUCCESS:-1, "../src/aes_kernel.cl");
-  std::string prog(std::istreambuf_iterator<char>(file),
-                   (std::istreambuf_iterator<char>()));
-  cl::Program::Sources source(1, std::make_pair(prog.c_str(), prog.length()+1));
-  cl::Program program(context, source);
-  err = program.build(devices,"");
-  cout << "Build log: "
-       << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0])
-       << endl;
-  checkErr(err, "Program::build()");
-#endif // STDOPENCL
-
-#ifdef INTELFPGA
-  // Create the program
-  string binary_file = getBoardBinaryFile("aes_kernel", devices[0]());
-  printf("Using AOCX: %s\n", binary_file.c_str());
-  cl_program p = createProgramFromBinary(context(), binary_file.c_str(), &(devices[0]()), 1);
-  cl::Program program = cl::Program(p, false);
-#endif // INTELFPGA
-
-  cl::Kernel kernel(program, "aesEncrypt", &err);
-  checkErr(err, "Kernel::Kernel()");
   err = kernel.setArg(0, ptxBuffer);
   checkErr(err, "Kernel::setArg()");
   err = kernel.setArg(1, keyBuffer);
@@ -209,6 +234,6 @@ int main(void) {
   #endif //VERIFY
 
   return EXIT_SUCCESS;
-  
+
   // [TODO] Add opencl cleanup code
 }
