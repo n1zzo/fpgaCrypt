@@ -90,11 +90,6 @@ int main(void) {
                                           0xab, 0xf7, 0x15, 0x88,
                                           0x09, 0xcf, 0x4f, 0x3c};
 
-  // Data initialization
-  //ptx_h.fill(0x00);
-  //ctx_h.fill(0x00);
-  //key_h.fill(0x00);
-
   cl::Buffer ptxBuffer(context,
                        CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
                        ptx_size,
