@@ -122,7 +122,7 @@ cl::Kernel createOpenClKernel(const cl::Context &context,
   return kernel;
 }
 
-int main(void) {
+void aes_test() {
   cl_int err;
 
   // Initialize opencl board
@@ -167,8 +167,8 @@ int main(void) {
 
   cl::Kernel kernel = createOpenClKernel(context,
                                          devices,
-                                         "../src/aes_kernel.cl",
-                                         "aes_kernel");
+                                         "./aes_kernel",
+                                         "aesEncrypt");
 
   err = kernel.setArg(0, ptxBuffer);
   checkErr(err, "Kernel::setArg()");
@@ -233,7 +233,9 @@ int main(void) {
     cout << "WRONG: the ciphertexts do not match!" << endl;
   #endif //VERIFY
 
-  return EXIT_SUCCESS;
+}
 
-  // [TODO] Add opencl cleanup code
+int main(int argc, char *argv[]) {
+  aes_test();
+
 }
