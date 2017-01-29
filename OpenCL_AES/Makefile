@@ -3,14 +3,15 @@ CC	 = g++
 CFLAGS     = -Wall -pedantic -march=native -pipe -O3 -std=c++11
 LDFLAGS    = -lOpenCL -lmbedcrypto
 SRCDIR     = ./src
-INCLUDE    = -I /usr/include -I ../mbedtls/include/ -I ./common/inc
-LIBDIR     = ../mbedtls/library
+INCLUDE    = -I /usr/include -I $(MBEDTLS)/include/ -I ./common/inc
+LIBDIR     = $(MBEDTLS)/library
 BINDIR     = ./bin
 SOURCES    = $(SRCDIR)/aes_clean.cpp $(SRCDIR)/cl_errors.cpp ./common/src/AOCLUtils/*.cpp
 KERNELS    = $(SRCDIR)/aes_kernel.cl
 AOCX       = $(KERNELS:.cl=.aocx)
 OBJECTS    = $(SOURCES:.c=.o)
 BOARD      = s5_ref
+MBEDTLS    = ../mbedtls-xts
 
 all: $(NAME)
 

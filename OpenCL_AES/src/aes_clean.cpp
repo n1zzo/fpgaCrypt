@@ -43,14 +43,38 @@ inline void checkErr(cl_int err, const char * name) {
 }
 
 // Compare results with mbedTLS implementation
-void mbedEncrypt(const array<unsigned char, ptx_size> &ptx_h,
-		 const array<unsigned char, key_size> &key_h,
-		 array<unsigned char, ptx_size> &ctx_mbed) {
+void mbedAesReference(const array<unsigned char, ptx_size> &ptx_h,
+		      const array<unsigned char, key_size> &key_h,
+		      array<unsigned char, ptx_size> &ctx_mbed) {
   mbedtls_aes_context aes_ctx;
   mbedtls_aes_init( &aes_ctx  );
   mbedtls_aes_setkey_enc( &aes_ctx, key_h.data(), key_length );
   mbedtls_aes_crypt_ecb( &aes_ctx, MBEDTLS_AES_ENCRYPT, ptx_h.data(), ctx_mbed.data() );
   mbedtls_aes_free( &aes_ctx  );
+}
+
+void mbedXtsReference(const vector<unsigned char> &ptx_h,
+		      const vector<unsigned char> &key_h,
+                      vector<unsigned char> &iv_h,
+                      const int data_unit_len,
+		      vector<unsigned char> &ctx_mbed) {
+  // key_len is expressed in bytes, data_len in bits
+  int key_len;
+
+  mbedtls_aes_context crypt_ctx, tweak_ctx;
+  mbedtls_aes_init( &crypt_ctx  );
+  mbedtls_aes_init( &tweak_ctx  );
+  
+  key_len = key_h.size();
+  data_len = ptx_h.size();
+
+  mbedtls_aes_setkey_enc( &crypt_ctx, key_h.data(), (key_len*8)/2);
+  mbedtls_aes_setkey_enc( &tweak_ctx, key_h.data()+(key_len/2), (key_len*8)/2);
+  mbedtls_aes_crypt_xts( &crypt_ctx, &tweak_ctx, MBEDTLS_AES_ENCRYPT,
+                         data_unit_len, iv_h.data(),
+                         ptx_h.data(), ctx_mbed.data() );
+  mbedtls_aes_free( &crypt_ctx  );
+  mbedtls_aes_free( &tweak_ctx  );
 }
 
 cl::Context initOpenclPlatform() {
@@ -219,7 +243,7 @@ void aes_test() {
   #ifdef VERIFY
   // Compare results
   array<unsigned char, ptx_size> ctx_mbed;
-  mbedEncrypt(ptx_h, key_h, ctx_mbed);
+  mbedAesReference(ptx_h, key_h, ctx_mbed);
 
   cout << "MbedTLS ciphertext is: ";
   for(uint i = 0; i < ptx_size; i++) {
@@ -235,7 +259,14 @@ void aes_test() {
 
 }
 
-int main(int argc, char *argv[]) {
-  aes_test();
+void xts_test() {
+  // Define the two keys, plaintext, blocks number
+  // Compute sequentially the tweaks for each block
+  // Spawn aes-xts kernels and feed them with blocks
+  // Compute last round and perform ctx stealing
+}
 
+int main(int argc, char *argv[]) {
+  //aes_test();
+  xts_test();
 }
