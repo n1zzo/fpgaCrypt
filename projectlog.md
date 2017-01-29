@@ -23,4 +23,16 @@ Zoni proposes the following suggestions:
 
 Use NIST benchmarks for testing AES.
 
+
+Implement AES-XTS mode of operation in OpenCL.
+There is a patch for mbedTLS which passes the test vector and can be used
+as reference.
+
 [AES-XTS implementation for mbedtls](https://github.com/ARMmbed/mbedtls/pull/414/files)
+
+The tweak generation is performed sequentially on the host,
+however can be parallelized playing with the bit shift size.
+If we have N blocks, N-1 kernel will be spawned and fed with
+each block, and the second key. Then the final block
+will be computed and ciphertext stealing performed.
+
