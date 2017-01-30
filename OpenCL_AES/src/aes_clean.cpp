@@ -12,6 +12,7 @@
 #include <iterator>
 #include <vector>
 #include <array>
+#include <assert.h>
 
 #define VERIFY    // Enable result comparison with mbedTLS
 
@@ -27,6 +28,7 @@ using namespace aocl_utils;
 const unsigned int key_length = 128;         // Key size in bits
 const unsigned int key_size = key_length/8;  // Key size in bytes
 const unsigned int ptx_size = 16;            // Plaintext size in bytes
+const size_t ptx_size_xts = 1024;	     // XTS Plaintext size in bytes
 
 const char *getErrorString(cl_int error);
 
@@ -56,10 +58,9 @@ void mbedAesReference(const array<unsigned char, ptx_size> &ptx_h,
 void mbedXtsReference(const vector<unsigned char> &ptx_h,
 		      const vector<unsigned char> &key_h,
                       vector<unsigned char> &iv_h,
-                      const int data_unit_len,
 		      vector<unsigned char> &ctx_mbed) {
   // key_len is expressed in bytes, data_len in bits
-  int key_len;
+  int key_len, data_len;
 
   mbedtls_aes_context crypt_ctx, tweak_ctx;
   mbedtls_aes_init( &crypt_ctx  );
@@ -71,7 +72,7 @@ void mbedXtsReference(const vector<unsigned char> &ptx_h,
   mbedtls_aes_setkey_enc( &crypt_ctx, key_h.data(), (key_len*8)/2);
   mbedtls_aes_setkey_enc( &tweak_ctx, key_h.data()+(key_len/2), (key_len*8)/2);
   mbedtls_aes_crypt_xts( &crypt_ctx, &tweak_ctx, MBEDTLS_AES_ENCRYPT,
-                         data_unit_len, iv_h.data(),
+                         data_len, iv_h.data(),
                          ptx_h.data(), ctx_mbed.data() );
   mbedtls_aes_free( &crypt_ctx  );
   mbedtls_aes_free( &tweak_ctx  );
@@ -260,7 +261,37 @@ void aes_test() {
 }
 
 void xts_test() {
-  // Define the two keys, plaintext, blocks number
+
+	
+  // Define the key, plaintext, blocks number
+  vector<unsigned char> ptx_h;
+  vector<unsigned char> key_h;
+  vector<unsigned char> ctx_h;
+
+  ptx_h.resize(ptx_size_xts);
+  key_h.resize(key_size * 2);
+  ctx_h.resize(ptx_size_xts);
+
+  ifstream urandom("/dev/urandom", ios::in|ios::binary);
+  assert(urandom.good());
+  urandom.read(reinterpret_cast<char*>(ptx_h.data()), ptx_size_xts);
+  urandom.read(reinterpret_cast<char*>(key_h.data()), key_size * 2);
+  assert(urandom.good());
+  urandom.close(); 
+
+  cout << endl << "Plaintext: " << endl;
+  for(uint i = 0; i < ptx_size_xts; i++) {
+    printf("%02X", ptx_h[i]);
+  }
+  cout << endl << "Key: " << endl;
+  for(uint i = 0; i < key_size * 2; i++) {
+    printf("%02X", key_h[i]);
+  }
+  cout << endl << "Ciphertext: " << endl;
+  for(uint i = 0; i < ptx_size_xts; i++) {
+    printf("%02X", ctx_h[i]);
+  }
+
   // Compute sequentially the tweaks for each block
   // Spawn aes-xts kernels and feed them with blocks
   // Compute last round and perform ctx stealing

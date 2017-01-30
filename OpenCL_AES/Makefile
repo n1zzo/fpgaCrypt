@@ -16,7 +16,7 @@ MBEDTLS    = ../mbedtls-xts
 all: $(NAME)
 
 $(NAME): $(OBJECTS)
-	$(CC) $(INCLUDE) $^ -o $@ $(CFLAGS) $(LDFLAGS)
+	$(CC) $(INCLUDE) $^ -o $@ $(CFLAGS) $(LDFLAGS) -L $(LIBDIR)
 	@mv $@ $(BINDIR)
 
 $(SRCDIR)/%.o: %.cpp
