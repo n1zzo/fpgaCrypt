@@ -1,5 +1,5 @@
 NAME       = aesopencl
-CC	 = g++
+CC     	   = g++
 CFLAGS     = -Wall -pedantic -march=native -pipe -O3 -std=c++11
 LDFLAGS    = -lOpenCL -lmbedcrypto
 SRCDIR     = ./src
@@ -22,8 +22,8 @@ $(NAME): $(OBJECTS)
 $(SRCDIR)/%.o: %.cpp
 	$(CC) $(INCLUDE) $^ -c $< $(CFLAGS) $(LDFLAGS)
 
-debug: CFLAGS = -g -Wall -pedantic -O0 -I $(INCDIR) -L $(LIBDIR)
-debug: all
+debug: CFLAGS = -g -Wall -pedantic -O0 -std=c++11
+debug: host emu
 
 fpga: host $(AOCX)
 
@@ -41,7 +41,7 @@ $(SRCDIR)/%.aocx: $(SRCDIR)/%.cl
 	aoc $(AOCFLAGS) -v --board $(BOARD) $^ -o $@
 	@mv $@ $(BINDIR)
 
-run: 
+run:
 	cd $(BINDIR); env CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 ./$(NAME)
 
 clean:

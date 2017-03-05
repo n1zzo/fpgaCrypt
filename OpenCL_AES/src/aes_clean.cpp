@@ -8,10 +8,10 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <iterator>
 #include <vector>
-#include <array>
 #include <assert.h>
 
 #define VERIFY    // Enable result comparison with mbedTLS
@@ -27,7 +27,7 @@ using namespace aocl_utils;
 
 const unsigned int key_length = 128;         // Key size in bits
 const unsigned int key_size = key_length/8;  // Key size in bytes
-const unsigned int ptx_size = 16;            // Plaintext size in bytes
+const unsigned int iv_size = 16;             // XTS IV size (1 cipher block)
 const size_t ptx_size_xts = 1024;	     // XTS Plaintext size in bytes
 
 const char *getErrorString(cl_int error);
@@ -45,12 +45,12 @@ inline void checkErr(cl_int err, const char * name) {
 }
 
 // Compare results with mbedTLS implementation
-void mbedAesReference(const array<unsigned char, ptx_size> &ptx_h,
-		      const array<unsigned char, key_size> &key_h,
-		      array<unsigned char, ptx_size> &ctx_mbed) {
+void mbedAesReference(const vector<unsigned char> &ptx_h,
+		      const vector<unsigned char> &key_h,
+		      vector<unsigned char> &ctx_mbed) {
   mbedtls_aes_context aes_ctx;
   mbedtls_aes_init( &aes_ctx  );
-  mbedtls_aes_setkey_enc( &aes_ctx, key_h.data(), key_length );
+  mbedtls_aes_setkey_enc( &aes_ctx, key_h.data(), key_h.size()*8 );
   mbedtls_aes_crypt_ecb( &aes_ctx, MBEDTLS_AES_ENCRYPT, ptx_h.data(), ctx_mbed.data() );
   mbedtls_aes_free( &aes_ctx  );
 }
@@ -60,19 +60,20 @@ void mbedXtsReference(const vector<unsigned char> &ptx_h,
                       vector<unsigned char> &iv_h,
 		      vector<unsigned char> &ctx_mbed) {
   // key_len is expressed in bytes, data_len in bits
-  int key_len, data_len;
+  int key_len, data_len_bits;
 
   mbedtls_aes_context crypt_ctx, tweak_ctx;
   mbedtls_aes_init( &crypt_ctx  );
   mbedtls_aes_init( &tweak_ctx  );
   
   key_len = key_h.size();
-  data_len = ptx_h.size();
+  data_len_bits = ptx_h.size()*8;
 
   mbedtls_aes_setkey_enc( &crypt_ctx, key_h.data(), (key_len*8)/2);
   mbedtls_aes_setkey_enc( &tweak_ctx, key_h.data()+(key_len/2), (key_len*8)/2);
+
   mbedtls_aes_crypt_xts( &crypt_ctx, &tweak_ctx, MBEDTLS_AES_ENCRYPT,
-                         data_len, iv_h.data(),
+                         data_len_bits, iv_h.data(),
                          ptx_h.data(), ctx_mbed.data() );
   mbedtls_aes_free( &crypt_ctx  );
   mbedtls_aes_free( &tweak_ctx  );
@@ -116,7 +117,7 @@ cl::Kernel createOpenClKernel(const cl::Context &context,
 
   size_t maxWorkGroupSize;
   devices[0].getInfo(CL_DEVICE_MAX_WORK_GROUP_SIZE, &maxWorkGroupSize);
-  cout << "Max work group size is: " << maxWorkGroupSize << endl;
+  cout << endl << "Max work group size is: " << maxWorkGroupSize << endl;
 
   #ifdef STDOPENCL
     // Open and build kernel
@@ -147,42 +148,21 @@ cl::Kernel createOpenClKernel(const cl::Context &context,
   return kernel;
 }
 
-void aes_test() {
+void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
+		          vector<unsigned char> &key_h,
+                          vector<unsigned char> &ctx_h) {
   cl_int err;
 
   // Initialize opencl board
   cl::Context context = initOpenclPlatform();
 
-  // Buffer creation
-  array<unsigned char, ptx_size> ptx_h = {0x32, 0x43, 0xf6, 0xa8,
-                                          0x88, 0x5a, 0x30, 0x8d,
-                                          0x31, 0x31, 0x98, 0xa2,
-                                          0xe0, 0x37, 0x07, 0x34};
-  array<unsigned char, ptx_size> ctx_h;
-  array<unsigned char, key_size> key_h = {0x2b, 0x7e, 0x15, 0x16,
-                                          0x28, 0xae, 0xd2, 0xa6,
-                                          0xab, 0xf7, 0x15, 0x88,
-                                          0x09, 0xcf, 0x4f, 0x3c};
-
-  cl::Buffer ptxBuffer(context,
-                       CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-                       ptx_size,
-                       ptx_h.data(),
-                       &err);
+  cl::Buffer ptxBuffer(context, ptx_h.begin(), ptx_h.end(), true, true, &err);
                        checkErr(err, "Buffer::Buffer()");
 
-  cl::Buffer ctxBuffer(context,
-                       CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
-                       ptx_size,
-                       ctx_h.data(),
-                       &err);
+  cl::Buffer ctxBuffer(context, ctx_h.begin(), ctx_h.end(), true, true, &err);
                        checkErr(err, "Buffer::Buffer()");
 
-  cl::Buffer keyBuffer(context,
-                       CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-                       key_size,
-                       key_h.data(),
-                       &err);
+  cl::Buffer keyBuffer(context, key_h.begin(), key_h.end(), true, true, &err);
                        checkErr(err, "Buffer::Buffer()");
 
   // Get devices from context
@@ -194,6 +174,8 @@ void aes_test() {
                                          devices,
                                          "./aes_kernel",
                                          "aesEncrypt");
+
+  int ptx_size = ptx_h.size();
 
   err = kernel.setArg(0, ptxBuffer);
   checkErr(err, "Kernel::setArg()");
@@ -222,55 +204,76 @@ void aes_test() {
   err = queue.enqueueReadBuffer(ctxBuffer,
                                 CL_TRUE,
                                 0,
-                                ptx_size,
+                                ctx_h.size(),
                                 ctx_h.data());
   checkErr(err, "ComamndQueue::enqueueReadBuffer()");
+}
+
+void aes_test() {
+
+  // Buffer creation
+  vector<unsigned char> ptx_h = {0x32, 0x43, 0xf6, 0xa8,
+                                 0x88, 0x5a, 0x30, 0x8d,
+                                 0x31, 0x31, 0x98, 0xa2,
+                                 0xe0, 0x37, 0x07, 0x34};
+  vector<unsigned char> ctx_h = {0x00, 0x00, 0x00, 0x00,
+                                 0x00, 0x00, 0x00, 0x00,
+                                 0x00, 0x00, 0x00, 0x00,
+                                 0x00, 0x00, 0x00, 0x00};
+  vector<unsigned char> key_h = {0x2b, 0x7e, 0x15, 0x16,
+                                 0x28, 0xae, 0xd2, 0xa6,
+                                 0xab, 0xf7, 0x15, 0x88,
+                                 0x09, 0xcf, 0x4f, 0x3c};
+
+  opencl_aes_crypt_ecb(ptx_h, key_h, ctx_h);
 
   // Print results
-  cout << "Key is:                ";
-  for(uint i = 0; i < key_size; i++) {
-    printf("%02X", key_h[i]);
-  }
+  cout << endl << "Key is:                ";
+  for(const unsigned char &byte : key_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
   cout << endl << "Plaintext is:          ";
-  for(uint i = 0; i < ptx_size; i++) {
-    printf("%02X", ptx_h[i]);
-  }
+  for(const unsigned char &byte : ptx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
   cout << endl << "Ciphertext is:         ";
-  for(uint i = 0; i < ptx_size; i++) {
-    printf("%02X", ctx_h[i]);
-  }
-  cout << endl;
+  for(const unsigned char &byte : ctx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
 
   #ifdef VERIFY
+  vector<unsigned char> ctx_mbed = {0x00, 0x00, 0x00, 0x00,
+                                    0x00, 0x00, 0x00, 0x00,
+                                    0x00, 0x00, 0x00, 0x00,
+                                    0x00, 0x00, 0x00, 0x00};
+
   // Compare results
-  array<unsigned char, ptx_size> ctx_mbed;
   mbedAesReference(ptx_h, key_h, ctx_mbed);
 
-  cout << "MbedTLS ciphertext is: ";
-  for(uint i = 0; i < ptx_size; i++) {
-    printf("%02X", ctx_mbed[i]);
-  }
+  cout << endl << "MbedTLS ciphertext is: ";
+  for(const unsigned char &byte : ctx_mbed)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
   cout << endl;
 
   if (ctx_h == ctx_mbed)
     cout << "CORRECT: the ciphertexts match!" << endl;
   else
-    cout << "WRONG: the ciphertexts do not match!" << endl;
+    cout << "WRONG: the ciphertexts DO NOT match!" << endl;
   #endif //VERIFY
 
 }
 
 void xts_test() {
-
 	
   // Define the key, plaintext, blocks number
   vector<unsigned char> ptx_h;
   vector<unsigned char> key_h;
+  vector<unsigned char> iv_h;
   vector<unsigned char> ctx_h;
+  vector<unsigned char> ctx_ref;
 
   ptx_h.resize(ptx_size_xts);
   key_h.resize(key_size * 2);
+  iv_h.resize(iv_size);
   ctx_h.resize(ptx_size_xts);
+  ctx_ref.resize(ptx_size_xts);
 
   ifstream urandom("/dev/urandom", ios::in|ios::binary);
   assert(urandom.good());
@@ -278,6 +281,12 @@ void xts_test() {
   urandom.read(reinterpret_cast<char*>(key_h.data()), key_size * 2);
   assert(urandom.good());
   urandom.close(); 
+
+  mbedXtsReference(ptx_h, key_h, iv_h, ctx_ref);
+
+  // Compute sequentially the tweaks for each block
+  // Spawn aes-xts kernels and feed them with blocks
+  // Compute last round and perform ctx stealing
 
   cout << endl << "Plaintext: " << endl;
   for(uint i = 0; i < ptx_size_xts; i++) {
@@ -287,17 +296,23 @@ void xts_test() {
   for(uint i = 0; i < key_size * 2; i++) {
     printf("%02X", key_h[i]);
   }
+  cout << endl << "Iv: " << endl;
+  for(uint i = 0; i < iv_size; i++) {
+    printf("%02X", iv_h[i]);
+  }
   cout << endl << "Ciphertext: " << endl;
   for(uint i = 0; i < ptx_size_xts; i++) {
     printf("%02X", ctx_h[i]);
   }
+  cout << endl << "Reference Ciphertext: " << endl;
+  for(uint i = 0; i < ptx_size_xts; i++) {
+    printf("%02X", ctx_ref[i]);
+  }
 
-  // Compute sequentially the tweaks for each block
-  // Spawn aes-xts kernels and feed them with blocks
-  // Compute last round and perform ctx stealing
+  cout << endl;
 }
 
 int main(int argc, char *argv[]) {
-  //aes_test();
-  xts_test();
+  aes_test();
+  //xts_test();
 }
