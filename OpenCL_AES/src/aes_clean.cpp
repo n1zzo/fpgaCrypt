@@ -159,7 +159,7 @@ void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
   cl::Buffer ptxBuffer(context, ptx_h.begin(), ptx_h.end(), true, true, &err);
                        checkErr(err, "Buffer::Buffer()");
 
-  cl::Buffer ctxBuffer(context, ctx_h.begin(), ctx_h.end(), true, true, &err);
+  cl::Buffer ctxBuffer(context, ctx_h.begin(), ctx_h.end(), false, true, &err);
                        checkErr(err, "Buffer::Buffer()");
 
   cl::Buffer keyBuffer(context, key_h.begin(), key_h.end(), true, true, &err);
@@ -313,6 +313,6 @@ void xts_test() {
 }
 
 int main(int argc, char *argv[]) {
-  aes_test();
-  //xts_test();
+  //aes_test();
+  xts_test();
 }
