@@ -272,7 +272,12 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
                           vector<unsigned char> &iv_h,
                           vector<unsigned char> &ctx_h) {
 
-  // [TODO] Verify plaintext size is greater than 16 Byte
+  // Verify plaintext size is greater than 16 Byte
+  if(ptx_h.size() < 16) {
+    cerr << "Error: plaintext is too short, cannot perform ciphertext stealing!"
+         << endl;
+    exit(-1);
+  }
 
   int nblocks = ptx_h.size() / 16;
 
@@ -342,6 +347,6 @@ void xts_test() {
 }
 
 int main(int argc, char *argv[]) {
-  aes_test();
-  //xts_test();
+  //aes_test();
+  xts_test();
 }
