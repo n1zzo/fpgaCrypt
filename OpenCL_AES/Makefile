@@ -41,7 +41,7 @@ $(SRCDIR)/%.aocx: $(SRCDIR)/%.cl
 	aoc $(AOCFLAGS) -v --board $(BOARD) $^ -o $@
 	@mv $@ $(BINDIR)
 
-run:
+run:    host emu
 	cd $(BINDIR); env CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 ./$(NAME)
 
 clean:

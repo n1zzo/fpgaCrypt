@@ -25,8 +25,7 @@
 using namespace std;
 using namespace aocl_utils;
 
-const unsigned int key_length = 128;         // Key size in bits
-const unsigned int key_size = key_length/8;  // Key size in bytes
+const unsigned int xts_key_size = 16;         // Key size in bytes
 const unsigned int iv_size = 16;             // XTS IV size (1 cipher block)
 const size_t ptx_size_xts = 1024;	     // XTS Plaintext size in bytes
 
@@ -46,8 +45,8 @@ inline void checkErr(cl_int err, const char * name) {
 
 // Compare results with mbedTLS implementation
 void mbedAesReference(const vector<unsigned char> &ptx_h,
-    const vector<unsigned char> &key_h,
-    vector<unsigned char> &ctx_mbed) {
+                      const vector<unsigned char> &key_h,
+                      vector<unsigned char> &ctx_mbed) {
   mbedtls_aes_context aes_ctx;
   mbedtls_aes_init( &aes_ctx  );
   mbedtls_aes_setkey_enc( &aes_ctx, key_h.data(), key_h.size()*8 );
@@ -56,9 +55,9 @@ void mbedAesReference(const vector<unsigned char> &ptx_h,
 }
 
 void mbedXtsReference(const vector<unsigned char> &ptx_h,
-    const vector<unsigned char> &key_h,
-    vector<unsigned char> &iv_h,
-    vector<unsigned char> &ctx_mbed) {
+                      const vector<unsigned char> &key_h,
+                      vector<unsigned char> &iv_h,
+                      vector<unsigned char> &ctx_mbed) {
   // key_len is expressed in bytes, data_len in bits
   int key_len, data_len_bits;
 
@@ -108,9 +107,9 @@ cl::Context initOpenclPlatform() {
 }
 
 cl::Kernel createOpenClKernel(const cl::Context &context,
-    const vector<cl::Device> &devices,
-    const string &sourcePath,
-    const string &kernelName) {
+                              const vector<cl::Device> &devices,
+                              const string &sourcePath,
+                              const string &kernelName) {
   cl_int err;
 
 
@@ -149,8 +148,16 @@ cl::Kernel createOpenClKernel(const cl::Context &context,
 }
 
 void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
-    vector<unsigned char> &key_h,
-    vector<unsigned char> &ctx_h) {
+                          vector<unsigned char> &key_h,
+                          vector<unsigned char> &ctx_h) {
+
+  // Verify key size is one of the supported ones
+  int key_size_bits = key_h.size() * 8;
+  if(key_size_bits != 128 && key_size_bits != 192 && key_size_bits != 256) {
+    cerr << "Error: unsupported key size -> " << key_size_bits << endl;
+    exit(-1);
+  }
+
   cl_int err;
 
   // Initialize opencl board
@@ -183,7 +190,7 @@ void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
   checkErr(err, "Kernel::setArg()");
   err = kernel.setArg(2, ctxBuffer);
   checkErr(err, "Kernel::setArg()");
-  err = kernel.setArg(3, key_length);
+  err = kernel.setArg(3, key_size_bits);
   checkErr(err, "Kernel::setArg()");
   err = kernel.setArg(4, ptx_size);
   checkErr(err, "Kernel::setArg()");
@@ -213,17 +220,17 @@ void aes_test() {
 
   // Buffer creation
   vector<unsigned char> ptx_h = {0x32, 0x43, 0xf6, 0xa8,
-    0x88, 0x5a, 0x30, 0x8d,
-    0x31, 0x31, 0x98, 0xa2,
-    0xe0, 0x37, 0x07, 0x34};
+                                 0x88, 0x5a, 0x30, 0x8d,
+                                 0x31, 0x31, 0x98, 0xa2,
+                                 0xe0, 0x37, 0x07, 0x34};
   vector<unsigned char> ctx_h = {0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00};
+                                 0x00, 0x00, 0x00, 0x00,
+                                 0x00, 0x00, 0x00, 0x00,
+                                 0x00, 0x00, 0x00, 0x00};
   vector<unsigned char> key_h = {0x2b, 0x7e, 0x15, 0x16,
-    0x28, 0xae, 0xd2, 0xa6,
-    0xab, 0xf7, 0x15, 0x88,
-    0x09, 0xcf, 0x4f, 0x3c};
+                                 0x28, 0xae, 0xd2, 0xa6,
+                                 0xab, 0xf7, 0x15, 0x88,
+                                 0x09, 0xcf, 0x4f, 0x3c};
 
   opencl_aes_crypt_ecb(ptx_h, key_h, ctx_h);
 
@@ -261,77 +268,80 @@ void aes_test() {
 }
 
 void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
-    vector<unsigned char> &key_h,
-    vector<unsigned char> &iv_h,
-    vector<unsigned char> &ctx_h) {
+                          vector<unsigned char> &key_h,
+                          vector<unsigned char> &iv_h,
+                          vector<unsigned char> &ctx_h) {
+
+  // [TODO] Verify plaintext size is greater than 16 Byte
+
+  int nblocks = ptx_h.size() / 16;
+
   vector<unsigned char> key1(key_h.begin(), key_h.begin()+(key_h.size()/2));
   vector<unsigned char> key2(key_h.begin()+(key_h.size()/2), key_h.end());
+  // Tweak size is equal to the plaintext size
+  vector<unsigned char> tweak(ptx_h.size(), 0);
 
   // Compute initial tweak value
-  void opencl_aes_crypt_ecb(iv_h, key2, vector<unsigned char> &ctx_h) {
+  opencl_aes_crypt_ecb(iv_h, key2, tweak);
+
+  // Compute sequentially the tweaks for each block
+  // Spawn aes-xts kernels and feed them with blocks
+  // Compute last round and perform ctx stealing
+
+}
 
 
-    // Compute sequentially the tweaks for each block
-    // Spawn aes-xts kernels and feed them with blocks
-    // Compute last round and perform ctx stealing
+void xts_test() {
 
+  // Define the key, plaintext, blocks number
+  vector<unsigned char> ptx_h;
+  vector<unsigned char> key_h;
+  vector<unsigned char> iv_h;
+  vector<unsigned char> ctx_h;
+  vector<unsigned char> ctx_ref;
 
-    void xts_test() {
+  ptx_h.resize(ptx_size_xts);
+  key_h.resize(xts_key_size * 2);
+  iv_h.resize(iv_size);
+  ctx_h.resize(ptx_size_xts);
+  ctx_ref.resize(ptx_size_xts);
 
-      // Define the key, plaintext, blocks number
-      vector<unsigned char> ptx_h;
-      vector<unsigned char> key_h;
-      vector<unsigned char> iv_h;
-      vector<unsigned char> ctx_h;
-      vector<unsigned char> ctx_ref;
+  // Extract random key, IV and data
+  ifstream urandom("/dev/urandom", ios::in|ios::binary);
+  assert(urandom.good());
+  urandom.read(reinterpret_cast<char*>(ptx_h.data()), ptx_size_xts);
+  urandom.read(reinterpret_cast<char*>(key_h.data()), xts_key_size * 2);
+  urandom.read(reinterpret_cast<char*>(iv_h.data()), iv_size);
+  assert(urandom.good());
+  urandom.close();
 
-      ptx_h.resize(ptx_size_xts);
-      key_h.resize(key_size * 2);
-      iv_h.resize(iv_size);
-      ctx_h.resize(ptx_size_xts);
-      ctx_ref.resize(ptx_size_xts);
+  opencl_aes_crypt_xts(ptx_h, key_h, iv_h, ctx_h);
 
-      // Extract random key, IV and data
-      ifstream urandom("/dev/urandom", ios::in|ios::binary);
-      assert(urandom.good());
-      urandom.read(reinterpret_cast<char*>(ptx_h.data()), ptx_size_xts);
-      urandom.read(reinterpret_cast<char*>(key_h.data()), key_size * 2);
-      urandom.read(reinterpret_cast<char*>(iv_h.data()), iv_size);
-      assert(urandom.good());
-      urandom.close();
+  cout << endl << "Plaintext: " << endl;
+  for(const unsigned char &byte : ptx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl << "Key: " << endl;
+  for(const unsigned char &byte : key_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl << "Iv: " << endl;
+  for(const unsigned char &byte : iv_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl << "Ciphertext: " << endl;
+  for(const unsigned char &byte : ctx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
 
-      opencl_aes_crypt_xts(ptx_h, key_h, iv_h, ctx_h);
+  #ifdef VERIFY
+  mbedXtsReference(ptx_h, key_h, iv_h, ctx_ref);
 
-      cout << endl << "Plaintext: " << endl;
-      for(uint i = 0; i < ptx_size_xts; i++) {
-        printf("%02X", ptx_h[i]);
-      }
-      cout << endl << "Key: " << endl;
-      for(uint i = 0; i < key_size * 2; i++) {
-        printf("%02X", key_h[i]);
-      }
-      cout << endl << "Iv: " << endl;
-      for(uint i = 0; i < iv_size; i++) {
-        printf("%02X", iv_h[i]);
-      }
-      cout << endl << "Ciphertext: " << endl;
-      for(uint i = 0; i < ptx_size_xts; i++) {
-        printf("%02X", ctx_h[i]);
-      }
+  cout << endl << "Reference Ciphertext: " << endl;
+  for(const unsigned char &byte : ctx_ref)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  #endif //VERIFY
+  
+  cout << endl;
+}
 
-#ifdef VERIFY
-      mbedXtsReference(ptx_h, key_h, iv_h, ctx_ref);
-
-      cout << endl << "Reference Ciphertext: " << endl;
-      for(uint i = 0; i < ptx_size_xts; i++) {
-        printf("%02X", ctx_ref[i]);
-      }
-#endif //VERIFY
-
-      cout << endl;
-    }
-
-    int main(int argc, char *argv[]) {
-      //aes_test();
-      xts_test();
-    }
+int main(int argc, char *argv[]) {
+  aes_test();
+  //xts_test();
+}
