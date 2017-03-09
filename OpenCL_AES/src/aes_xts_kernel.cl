@@ -169,12 +169,12 @@ void put_uint32(uint32 n, __local uint8 *b, uint8 i)
 */
 void aes_fround( __local uint32 *X0,
                  uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3,
-                 __local uint32 RK[], int idx)
+                 __local uint32 RK[], int item_idx)
 {
-	if(idx < 4)
+	if(item_idx < 4)
 	{
 		RK += 4;
-		switch(idx)   /** suddivisione e criptaggio delle paraole eseguite da thread */
+		switch(item_idx)   /** suddivisione e criptaggio delle paraole eseguite da thread */
 		{	      /** paralleli, uno per ogni quarto di dato */
 			case 0:
 				*X0 = RK[0] ^ FT0[ (uint8) ( Y0 >> 24 ) ] ^
@@ -318,50 +318,59 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 *
 */
 __kernel __attribute__((reqd_work_group_size(4, 1, 1)))
-void aesEncrypt (__constant const uint8* restrict ptx_d,
-                          __constant const uint8* restrict key_d,
-                          __global uint8* restrict ctx_d,
-                          const uint key_length_d,
-                          const uint ptx_size)
+void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
+                 __constant const uint8* restrict key_d,
+                 __constant const uint8* restrict tweak_d,
+                 __global uint8* restrict ctx_d,
+                 const uint key_length_d,
+                 const uint ptx_size)
 {
-    // [TODO] ptx_size parameter is actually never used!
-    // We will use it to implement XTS mode of operation
+    __private int item_idx;          /** Index of the work-item */
+    __private int group_idx;         /** Index of the work-group */
+
+    item_idx = get_local_id(0);
+    group_idx = get_group_id(0);
 
     // This computation just single threaded
+
 
     __local aes_context context;
     __local uint8 input[16];
     __local uint8 output[16];
     __local uint8 key[32];
 
-    // Copying data into local memory to gain faster access
+    if(group_idx < ptx_size / 16) { /** Do not exceed plaintext size */
 
-    #pragma unroll
-    for(int i=0; i<16; i++)
-    {
-	input[i] = ptx_d[i];
-	output[i] = 0x00;
-    }
-    #pragma unroll 32
-    for(int i=0; i<(key_length_d/8); i++) {
-        key[i] = key_d[i];
+      // Copying data into local memory to gain faster access
+
+      #pragma unroll
+      for(int i=0; i<16; i++)
+      {
+          input[i] = ptx_d[i+(16*group_idx)];
+          output[i] = 0x00;
+      }
+      #pragma unroll 32
+      for(int i=0; i<(key_length_d/8); i++) {
+          key[i] = key_d[i];
+      }
+
+      // XOR data with tweak
+      for(int i=0; i<16; i++)
+        input[i] ^= tweak_d[i+(16*group_idx)];
     }
 
     aes_set_key(&context, key, key_length_d);
 
-    __local uint32 *RK;            /** Round key */
-    __private int idx;               /** Index of the working item */
+    __local uint32 *RK;              /** Round key */
     __local uint32 X0, X1, X2, X3;   /** Input blocks (shared in the wg) */
     __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
 
     RK = context.erk;
 
-    idx = get_global_id(0);
-
     /** Round Zero */
-	if(idx < 4)
+	if(item_idx < 4)
 	{
-		switch(idx)		  /** adattamento dei dati ai 32 bit */
+		switch(item_idx)		  /** adattamento dei dati ai 32 bit */
 		{
 			case 0:
 				GET_UINT32( X0, input,  0 );
@@ -389,23 +398,23 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
         #pragma unroll 13
 	for(int i=0; i<(context.nr-1); i++)
 	{
-		if(idx < 4)
+		if(item_idx < 4)
 		{
 			barrier(CLK_LOCAL_MEM_FENCE);	 /** Thread syncronization */
 
-			switch(idx)
+			switch(item_idx)
 			{
 				case 0:
-					aes_fround(&Y0, X0, X1, X2, X3, RK, idx);
+					aes_fround(&Y0, X0, X1, X2, X3, RK, item_idx);
 					break;
 				case 1:
-					aes_fround(&Y1, X0, X1, X2, X3, RK, idx);
+					aes_fround(&Y1, X0, X1, X2, X3, RK, item_idx);
 					break;
 				case 2:
-					aes_fround(&Y2, X0, X1, X2, X3, RK, idx);
+					aes_fround(&Y2, X0, X1, X2, X3, RK, item_idx);
 					break;
 				case 3:
-					aes_fround(&Y3, X0, X1, X2, X3, RK, idx);
+					aes_fround(&Y3, X0, X1, X2, X3, RK, item_idx);
 					break;
 			}
 
@@ -422,9 +431,9 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
 							  /** ultimo round */
 	RK += 4;
 
-    if(idx < 4)
+    if(item_idx < 4)
     	{
-    		switch(idx)
+    		switch(item_idx)
     		{
     			case 0:
     				X0 = RK[0] ^ ( FSb[ (uint8) ( Y0 >> 24 ) ] << 24 ) ^
@@ -459,11 +468,15 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
     barrier(CLK_GLOBAL_MEM_FENCE);
     }
 
+    // XOR again data with tweak
+    for(int i=0; i<16; i++)
+      output[i] ^= tweak_d[i+(16*group_idx)];
+
     // Copy results back into host memory
 
     #pragma unroll
     for(int i=0; i<4; i++)
     {
-       ctx_d[(idx*4)+i] = output[(idx*4)+i];
+       ctx_d[(group_idx*16)+(item_idx*4)+i] = output[(item_idx*4)+i];
     }
 }

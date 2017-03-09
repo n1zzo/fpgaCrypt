@@ -320,11 +320,74 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
       gf128_tweak_mult(tweak.data()+(i-AES_BLK_BYTES));
   }
 
-  cout << endl << "Tweak: " << endl;
-  for(const unsigned char &byte : tweak)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  //cout << endl << "Tweak: " << endl;
+  //for(const unsigned char &byte : tweak)
+  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
 
-  // [TODO] Spawn aes-xts kernels and feed them with blocks
+  // Spawn aes-xts kernels and feed them with blocks
+  cl_int err;
+
+  // Initialize opencl board
+  cl::Context context = initOpenclPlatform();
+
+  cl::Buffer ptxBuffer(context, ptx_h.begin(), ptx_h.end(), true, true, &err);
+  checkErr(err, "Buffer::Buffer()");
+
+  cl::Buffer ctxBuffer(context, ctx_h.begin(), ctx_h.end(), false, true, &err);
+  checkErr(err, "Buffer::Buffer()");
+
+  cl::Buffer keyBuffer(context, key2.begin(), key2.end(), true, true, &err);
+  checkErr(err, "Buffer::Buffer()");
+
+  cl::Buffer tweakBuffer(context, tweak.begin(), tweak.end(), true, true, &err);
+  checkErr(err, "Buffer::Buffer()");
+
+  // Get devices from context
+  vector<cl::Device> devices;
+  devices = context.getInfo<CL_CONTEXT_DEVICES>();
+  checkErr(devices.size() > 0 ? CL_SUCCESS : -1, "devices.size() > 0");
+
+  cl::Kernel kernel = createOpenClKernel(context,
+      devices,
+      "./aes_xts_kernel",
+      "aesXtsEncrypt");
+
+  int ptx_size = ptx_h.size();
+  int key_size_bits = key2.size()*8;
+
+  err = kernel.setArg(0, ptxBuffer);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(1, keyBuffer);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(2, tweakBuffer);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(3, ctxBuffer);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(4, key_size_bits);
+  checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(5, ptx_size);
+  checkErr(err, "Kernel::setArg()");
+
+  // Create command queue and run kernel
+  cl::CommandQueue queue(context, devices[0], 0, &err);
+  checkErr(err, "CommandQueue::CommandQueue()");cl::Event event;
+  err = queue.enqueueNDRangeKernel(kernel,
+      cl::NullRange,
+      cl::NDRange(4*nblocks),
+      cl::NDRange(4),
+      NULL,
+      &event);
+  checkErr(err, "CommandQueue::enqueueNDRangeKernel()");
+
+  // Read results from device
+  event.wait();
+  err = queue.enqueueReadBuffer(ctxBuffer,
+      CL_TRUE,
+      0,
+      ctx_h.size(),
+      ctx_h.data());
+  checkErr(err, "CommandQueue::enqueueReadBuffer()");
+
   // [TODO] Compute last round and perform ctx stealing
 
 }
