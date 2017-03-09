@@ -22,11 +22,14 @@
 #define STDOPENCL // Standard OpenCl Kernel compilation
 #endif // INTELFPGA
 
+#define AES_BLK_BYTES 16 // AES block size
+#define GF_128_FDBK 0x87 // Modulus of the Galois Field
+
 using namespace std;
 using namespace aocl_utils;
 
-const unsigned int xts_key_size = 16;         // Key size in bytes
-const unsigned int iv_size = 16;             // XTS IV size (1 cipher block)
+const unsigned int xts_key_size = 16;        // Key size in bytes
+const unsigned int iv_size = AES_BLK_BYTES;  // XTS IV size (1 cipher block)
 const size_t ptx_size_xts = 1024;	     // XTS Plaintext size in bytes
 
 const char *getErrorString(cl_int error);
@@ -115,8 +118,15 @@ cl::Kernel createOpenClKernel(const cl::Context &context,
 
 
   size_t maxWorkGroupSize;
+  cl_bool deviceEndianLittle;
+
   devices[0].getInfo(CL_DEVICE_MAX_WORK_GROUP_SIZE, &maxWorkGroupSize);
   cout << endl << "Max work group size is: " << maxWorkGroupSize << endl;
+  devices[0].getInfo(CL_DEVICE_ENDIAN_LITTLE, &deviceEndianLittle);
+  if(deviceEndianLittle)
+    cout << "Device is little-endian." << endl;
+  else
+    cout << "Device is big-endian." << endl;
 
 #ifdef STDOPENCL
   // Open and build kernel
@@ -267,6 +277,22 @@ void aes_test() {
 
 }
 
+// [TODO] Refactor to avoid side effects
+void gf128_tweak_mult(unsigned char tweak[]) {
+  // Galois Field modular multiplication over GF(2) modulo
+  // x^128 + x^7 + x^2 + x + 1, with 2 primitive element of GF(2^128)
+   
+  int carry_out, carry_in = 0; 
+  for (j = 0; j < AES_BLK_BYTES; j++) {
+    carry_out = (tweak[j] >> 7) & 1;
+    tweak[j] = ((tweak[j] << 1) + carry_in) & 0xFF;
+    carry_in = carry_out;
+  }
+  if (carry_out)
+    tweak[0] ^= GF_128_FDBK;
+  }
+}
+
 void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
                           vector<unsigned char> &key_h,
                           vector<unsigned char> &iv_h,
@@ -289,9 +315,17 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
   // Compute initial tweak value
   opencl_aes_crypt_ecb(iv_h, key2, tweak);
 
+  // Replicate tweak value to fill tweak vector
+  for(int i = 0; i < nblock*AES_BLK_BYTES; i++)
+    tweak[i] = tweak[i%AES_BLK_BYTES];
+
   // Compute sequentially the tweaks for each block
-  // Spawn aes-xts kernels and feed them with blocks
-  // Compute last round and perform ctx stealing
+  for(int i = 0; i < nblocks; i++) {
+    gf128_tweak_mult(tweak.data()+i*AES_BLK_BYTES);
+  }
+
+  // [TODO] Spawn aes-xts kernels and feed them with blocks
+  // [TODO] Compute last round and perform ctx stealing
 
 }
 
