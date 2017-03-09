@@ -277,20 +277,18 @@ void aes_test() {
 
 }
 
-// [TODO] Refactor to avoid side effects
 void gf128_tweak_mult(unsigned char tweak[]) {
   // Galois Field modular multiplication over GF(2) modulo
   // x^128 + x^7 + x^2 + x + 1, with 2 primitive element of GF(2^128)
    
   int carry_out, carry_in = 0; 
-  for (j = 0; j < AES_BLK_BYTES; j++) {
+  for (int j = 0; j < AES_BLK_BYTES; j++) {
     carry_out = (tweak[j] >> 7) & 1;
     tweak[j] = ((tweak[j] << 1) + carry_in) & 0xFF;
     carry_in = carry_out;
   }
   if (carry_out)
     tweak[0] ^= GF_128_FDBK;
-  }
 }
 
 void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
@@ -315,14 +313,16 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
   // Compute initial tweak value
   opencl_aes_crypt_ecb(iv_h, key2, tweak);
 
-  // Replicate tweak value to fill tweak vector
-  for(int i = 0; i < nblock*AES_BLK_BYTES; i++)
-    tweak[i] = tweak[i%AES_BLK_BYTES];
-
-  // Compute sequentially the tweaks for each block
-  for(int i = 0; i < nblocks; i++) {
-    gf128_tweak_mult(tweak.data()+i*AES_BLK_BYTES);
+  // Fill tweak vector
+  for(int i = AES_BLK_BYTES; i < nblocks*AES_BLK_BYTES; i++) {
+    tweak[i] = tweak[i-AES_BLK_BYTES];
+    if(i != AES_BLK_BYTES && i%AES_BLK_BYTES == 0)
+      gf128_tweak_mult(tweak.data()+(i-AES_BLK_BYTES));
   }
+
+  cout << endl << "Tweak: " << endl;
+  for(const unsigned char &byte : tweak)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
 
   // [TODO] Spawn aes-xts kernels and feed them with blocks
   // [TODO] Compute last round and perform ctx stealing
