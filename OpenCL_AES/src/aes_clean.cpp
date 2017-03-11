@@ -316,13 +316,16 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
   // Fill tweak vector
   for(int i = AES_BLK_BYTES; i < nblocks*AES_BLK_BYTES; i++) {
     tweak[i] = tweak[i-AES_BLK_BYTES];
-    if(i != AES_BLK_BYTES && i%AES_BLK_BYTES == 0)
+    if(i != AES_BLK_BYTES && i%AES_BLK_BYTES == 0);
+      // [TODO] Fix bug in gf128_mult
       gf128_tweak_mult(tweak.data()+(i-AES_BLK_BYTES));
   }
 
-  //cout << endl << "Tweak: " << endl;
-  //for(const unsigned char &byte : tweak)
-  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl << "Tweak: " << endl;
+  for(const unsigned char &byte : tweak)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+
+  cout << endl;
 
   // Spawn aes-xts kernels and feed them with blocks
   cl_int err;
@@ -352,7 +355,8 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
       "./aes_xts_kernel",
       "aesXtsEncrypt");
 
-  int ptx_size = ptx_h.size();
+  // We are missing the last round to perform ciphertext stealing
+  int ptx_size = ptx_h.size() - AES_BLK_BYTES;
   int key_size_bits = key2.size()*8;
 
   err = kernel.setArg(0, ptxBuffer);
@@ -408,14 +412,27 @@ void xts_test() {
   ctx_h.resize(ptx_size_xts);
   ctx_ref.resize(ptx_size_xts);
 
-  // Extract random key, IV and data
-  ifstream urandom("/dev/urandom", ios::in|ios::binary);
-  assert(urandom.good());
-  urandom.read(reinterpret_cast<char*>(ptx_h.data()), ptx_size_xts);
-  urandom.read(reinterpret_cast<char*>(key_h.data()), xts_key_size * 2);
-  urandom.read(reinterpret_cast<char*>(iv_h.data()), iv_size);
-  assert(urandom.good());
-  urandom.close();
+  //// Extract random key, IV and data
+  //ifstream urandom("/dev/urandom", ios::in|ios::binary);
+  //assert(urandom.good());
+  //urandom.read(reinterpret_cast<char*>(ptx_h.data()), ptx_size_xts);
+  //urandom.read(reinterpret_cast<char*>(key_h.data()), xts_key_size * 2);
+  //urandom.read(reinterpret_cast<char*>(iv_h.data()), iv_size);
+  //assert(urandom.good());
+  //urandom.close();
+  
+  iv_h = {0x33, 0x33, 0x33, 0x33, 0x33, 0x00, 0x00, 0x00, 
+          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  
+  key_h = {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+           0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+           0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
+           0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22};
+
+  ptx_h = {0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+           0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+           0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+           0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44};
 
   opencl_aes_crypt_xts(ptx_h, key_h, iv_h, ctx_h);
 
