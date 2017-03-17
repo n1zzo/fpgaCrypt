@@ -358,8 +358,8 @@ void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
       }
 
       // XOR data with tweak
-      for(int i=0; i<16; i++)
-        input[i] ^= tweak_d[i+(16*group_idx)];
+      for(int i=0; i<4; i++)
+        input[(item_idx*4)+i] ^= tweak_d[(item_idx*4)+i+(16*group_idx)];
 
       aes_set_key(&context, key, key_length_d);
 
@@ -467,8 +467,8 @@ void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
       }
 
       // XOR again data with tweak
-      for(int i=0; i<16; i++)
-        output[i] ^= tweak_d[i+(16*group_idx)];
+      for(int i=0; i<4; i++)
+        output[(item_idx*4)+i] ^= tweak_d[(item_idx*4)+i+(16*group_idx)];
 
       // Copy results back into host memory
       #pragma unroll
