@@ -30,7 +30,7 @@ using namespace aocl_utils;
 
 const unsigned int xts_key_size = 16;        // Key size in bytes
 const unsigned int iv_size = AES_BLK_BYTES;  // XTS IV size (1 cipher block)
-const size_t ptx_size_xts = 1024;	     // XTS Plaintext size in bytes
+const size_t ptx_size_xts = 17;	     // XTS Plaintext size in bytes
 
 const char *getErrorString(cl_int error);
 
@@ -307,14 +307,14 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
 
   vector<unsigned char> key1(key_h.begin(), key_h.begin()+(key_h.size()/2));
   vector<unsigned char> key2(key_h.begin()+(key_h.size()/2), key_h.end());
-  // Tweak size is equal to the plaintext size
-  vector<unsigned char> tweak(ptx_h.size(), 0);
+  int tweak_size = ptx_h.size()+(AES_BLK_BYTES-(ptx_h.size() % AES_BLK_BYTES)); 
+  vector<unsigned char> tweak(tweak_size, 0);
 
   // Compute initial tweak value
   opencl_aes_crypt_ecb(iv_h, key2, tweak);
   
   // Fill tweak vector
-  for(int i = AES_BLK_BYTES; i < nblocks*AES_BLK_BYTES; i++) {
+  for(int i = AES_BLK_BYTES; i < tweak_size; i++) {
     tweak[i] = tweak[i-AES_BLK_BYTES];
     if(i%AES_BLK_BYTES == (AES_BLK_BYTES-1))
       gf128_tweak_mult(tweak.data()+(i-(AES_BLK_BYTES-1)));
@@ -354,8 +354,8 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
       "./aes_xts_kernel",
       "aesXtsEncrypt");
 
-  // We are missing the last round to perform ciphertext stealing
-  int ptx_size = ptx_h.size() - AES_BLK_BYTES;
+  // We are considering only full-size blocks
+  int ptx_size = nblocks * AES_BLK_BYTES;
   int key_size_bits = key2.size()*8;
 
   err = kernel.setArg(0, ptxBuffer);
@@ -391,8 +391,33 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
       ctx_h.data());
   checkErr(err, "CommandQueue::enqueueReadBuffer()");
 
-  // [TODO] Compute last round and perform ctx stealing
+  cout << endl << "Ciphertext before: " << endl;
+  for(const unsigned char &byte : ctx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl;
 
+  // Compute last partial block and perform ctx stealing
+  if(ptx_h.size() % AES_BLK_BYTES != 0) {
+    // Copy first chunk of the last complete block to the end of the ctx
+    int last_complete_index = (nblocks-1)*AES_BLK_BYTES;
+    auto last_complete_it = ctx_h.begin()+last_complete_index;
+    int partial_block_size = ptx_h.size()%AES_BLK_BYTES;
+    copy(last_complete_it,
+         last_complete_it+partial_block_size,
+         last_complete_it+AES_BLK_BYTES);
+    // Copy last partial block to the beginning of the last complete block
+    auto partial_ptx_it = ptx_h.end()-partial_block_size;
+    copy(partial_ptx_it, ptx_h.end(), last_complete_it);
+    // XOR-Encrypt-XOR
+    for(int i = 0; i < AES_BLK_BYTES; i++)
+      ctx_h[(nblocks-1)*AES_BLK_BYTES+i] ^= tweak[nblocks * AES_BLK_BYTES];
+    // [TODO] Refactor to allow aes on end of vector
+    //opencl_aes_crypt_ecb(ctx_h[last_complete_index],
+    //                     key1,
+    //                     ctx_h[last_complete_index]);
+    for(int i = 0; i < AES_BLK_BYTES; i++)
+      ctx_h[(nblocks-1)*AES_BLK_BYTES+i] ^= tweak[nblocks * AES_BLK_BYTES];
+  }
 }
 
 
@@ -411,42 +436,42 @@ void xts_test() {
   ctx_h.resize(ptx_size_xts);
   ctx_ref.resize(ptx_size_xts);
 
-  //// Extract random key, IV and data
-  //ifstream urandom("/dev/urandom", ios::in|ios::binary);
-  //assert(urandom.good());
-  //urandom.read(reinterpret_cast<char*>(ptx_h.data()), ptx_size_xts);
-  //urandom.read(reinterpret_cast<char*>(key_h.data()), xts_key_size * 2);
-  //urandom.read(reinterpret_cast<char*>(iv_h.data()), iv_size);
-  //assert(urandom.good());
-  //urandom.close();
+  // Extract random key, IV and data
+  ifstream urandom("/dev/urandom", ios::in|ios::binary);
+  assert(urandom.good());
+  urandom.read(reinterpret_cast<char*>(ptx_h.data()), ptx_size_xts);
+  urandom.read(reinterpret_cast<char*>(key_h.data()), xts_key_size * 2);
+  urandom.read(reinterpret_cast<char*>(iv_h.data()), iv_size);
+  assert(urandom.good());
+  urandom.close();
   
-  iv_h = {0x33, 0x33, 0x33, 0x33, 0x33, 0x00, 0x00, 0x00, 
-          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-  
-  key_h = {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-           0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-           0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
-           0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22};
+  //iv_h = {0x33, 0x33, 0x33, 0x33, 0x33, 0x00, 0x00, 0x00, 
+  //        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  //
+  //key_h = {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+  //         0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+  //         0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
+  //         0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22};
 
-  ptx_h = {0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
-           0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
-           0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
-           0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44};
+  //ptx_h = {0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+  //         0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+  //         0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+  //         0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44};
 
   opencl_aes_crypt_xts(ptx_h, key_h, iv_h, ctx_h);
 
-  //cout << endl << "Plaintext: " << endl;
-  //for(const unsigned char &byte : ptx_h)
-  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  //cout << endl << "Key: " << endl;
-  //for(const unsigned char &byte : key_h)
-  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  //cout << endl << "Iv: " << endl;
-  //for(const unsigned char &byte : iv_h)
-  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  //cout << endl << "Ciphertext: " << endl;
-  //for(const unsigned char &byte : ctx_h)
-  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl << "Plaintext: " << endl;
+  for(const unsigned char &byte : ptx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl << "Key: " << endl;
+  for(const unsigned char &byte : key_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl << "Iv: " << endl;
+  for(const unsigned char &byte : iv_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  cout << endl << "Ciphertext: " << endl;
+  for(const unsigned char &byte : ctx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
 
   #ifdef VERIFY
   mbedXtsReference(ptx_h, key_h, iv_h, ctx_ref);
