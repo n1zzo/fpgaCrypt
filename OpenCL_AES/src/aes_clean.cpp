@@ -312,17 +312,13 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
 
   // Compute initial tweak value
   opencl_aes_crypt_ecb(iv_h, key2, tweak);
-
+  
   // Fill tweak vector
   for(int i = AES_BLK_BYTES; i < nblocks*AES_BLK_BYTES; i++) {
     tweak[i] = tweak[i-AES_BLK_BYTES];
-    if(i != AES_BLK_BYTES && i%AES_BLK_BYTES == 0);
-      // [TODO] Fix bug in gf128_mult
-      gf128_tweak_mult(tweak.data()+(i-AES_BLK_BYTES));
+    if(i%AES_BLK_BYTES == (AES_BLK_BYTES-1))
+      gf128_tweak_mult(tweak.data()+(i-(AES_BLK_BYTES-1)));
   }
-
-  // [DEBUG]
-  tweak = {0x3f, 0x80, 0x3b, 0xcd, 0x0d, 0x7f, 0xd2, 0xb3, 0x75, 0x58, 0x41, 0x9f, 0x59, 0xd5, 0xcd, 0xa6, 0xf9, 0x00, 0x77, 0x9a, 0x1b, 0xfe, 0xa4, 0x67, 0xeb, 0xb0, 0x82, 0x3e, 0xb3, 0xaa, 0x9b, 0x4d};
 
   cout << endl << "Tweak: " << endl;
   for(const unsigned char &byte : tweak)
@@ -439,18 +435,18 @@ void xts_test() {
 
   opencl_aes_crypt_xts(ptx_h, key_h, iv_h, ctx_h);
 
-  cout << endl << "Plaintext: " << endl;
-  for(const unsigned char &byte : ptx_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl << "Key: " << endl;
-  for(const unsigned char &byte : key_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl << "Iv: " << endl;
-  for(const unsigned char &byte : iv_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl << "Ciphertext: " << endl;
-  for(const unsigned char &byte : ctx_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  //cout << endl << "Plaintext: " << endl;
+  //for(const unsigned char &byte : ptx_h)
+  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  //cout << endl << "Key: " << endl;
+  //for(const unsigned char &byte : key_h)
+  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  //cout << endl << "Iv: " << endl;
+  //for(const unsigned char &byte : iv_h)
+  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  //cout << endl << "Ciphertext: " << endl;
+  //for(const unsigned char &byte : ctx_h)
+  //  cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
 
   #ifdef VERIFY
   mbedXtsReference(ptx_h, key_h, iv_h, ctx_ref);
