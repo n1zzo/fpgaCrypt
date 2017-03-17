@@ -342,7 +342,7 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
   cl::Buffer ctxBuffer(context, ctx_h.begin(), ctx_h.end(), false, true, &err);
   checkErr(err, "Buffer::Buffer()");
 
-  cl::Buffer keyBuffer(context, key2.begin(), key2.end(), true, true, &err);
+  cl::Buffer keyBuffer(context, key1.begin(), key1.end(), true, true, &err);
   checkErr(err, "Buffer::Buffer()");
 
   cl::Buffer tweakBuffer(context, tweak.begin(), tweak.end(), true, true, &err);

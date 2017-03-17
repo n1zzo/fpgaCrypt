@@ -341,6 +341,7 @@ void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
     __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
 
     // Perform this computation with one work_group per AES block
+    // each work group is composed of 4 work_item, one per AES row
     if(group_idx < (ptx_size / 16)) { 
 
       // Copying data into local memory to gain faster access
@@ -466,16 +467,14 @@ void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
       }
 
       // XOR again data with tweak
-      //for(int i=0; i<16; i++)
-      //  output[i] ^= tweak_d[i+(16*group_idx)];
+      for(int i=0; i<16; i++)
+        output[i] ^= tweak_d[i+(16*group_idx)];
 
       // Copy results back into host memory
-
       #pragma unroll
       for(int i=0; i<4; i++)
       {
          ctx_d[(group_idx*16)+(item_idx*4)+i] = output[(item_idx*4)+i];
       }
-
     }   
 }
