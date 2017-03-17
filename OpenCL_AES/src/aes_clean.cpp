@@ -159,7 +159,10 @@ cl::Kernel createOpenClKernel(const cl::Context &context,
 
 void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
                           vector<unsigned char> &key_h,
-                          vector<unsigned char> &ctx_h) {
+                          vector<unsigned char> &ctx_h,
+                          uint64_t size,
+                          uint64_t in_offset = 0,
+                          uint64_t out_offset = 0) {
 
   // Verify key size is one of the supported ones
   int key_size_bits = key_h.size() * 8;
@@ -173,10 +176,10 @@ void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
   // Initialize opencl board
   cl::Context context = initOpenclPlatform();
 
-  cl::Buffer ptxBuffer(context, ptx_h.begin(), ptx_h.end(), true, true, &err);
+  cl::Buffer ptxBuffer(context, ptx_h.begin()+in_offset, ptx_h.begin()+in_offset+size, true, true, &err);
   checkErr(err, "Buffer::Buffer()");
 
-  cl::Buffer ctxBuffer(context, ctx_h.begin(), ctx_h.end(), false, true, &err);
+  cl::Buffer ctxBuffer(context, ctx_h.begin()+out_offset, ctx_h.begin()+out_offset+size, false, true, &err);
   checkErr(err, "Buffer::Buffer()");
 
   cl::Buffer keyBuffer(context, key_h.begin(), key_h.end(), true, true, &err);
@@ -242,7 +245,7 @@ void aes_test() {
                                  0xab, 0xf7, 0x15, 0x88,
                                  0x09, 0xcf, 0x4f, 0x3c};
 
-  opencl_aes_crypt_ecb(ptx_h, key_h, ctx_h);
+  opencl_aes_crypt_ecb(ptx_h, key_h, ctx_h, ptx_h.size());
 
   // Print results
   cout << endl << "Key is:                ";
@@ -311,7 +314,7 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
   vector<unsigned char> tweak(tweak_size, 0);
 
   // Compute initial tweak value
-  opencl_aes_crypt_ecb(iv_h, key2, tweak);
+  opencl_aes_crypt_ecb(iv_h, key2, tweak, AES_BLK_BYTES);
   
   // Fill tweak vector
   for(int i = AES_BLK_BYTES; i < tweak_size; i++) {
@@ -411,10 +414,10 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
     // XOR-Encrypt-XOR
     for(int i = 0; i < AES_BLK_BYTES; i++)
       ctx_h[(nblocks-1)*AES_BLK_BYTES+i] ^= tweak[nblocks * AES_BLK_BYTES];
-    // [TODO] Refactor to allow aes on end of vector
-    //opencl_aes_crypt_ecb(ctx_h[last_complete_index],
-    //                     key1,
-    //                     ctx_h[last_complete_index]);
+    opencl_aes_crypt_ecb(ctx_h, key1, ctx_h,
+                         last_complete_index,
+                         last_complete_index,
+                         AES_BLK_BYTES);
     for(int i = 0; i < AES_BLK_BYTES; i++)
       ctx_h[(nblocks-1)*AES_BLK_BYTES+i] ^= tweak[nblocks * AES_BLK_BYTES];
   }
