@@ -319,11 +319,11 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 */
 __kernel __attribute__((reqd_work_group_size(4, 1, 1)))
 void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
-                 __constant const uint8* restrict key_d,
-                 __constant const uint8* restrict tweak_d,
-                 __global uint8* restrict ctx_d,
-                 const uint key_length_d,
-                 const uint ptx_size)
+                    __constant const uint8* restrict key_d,
+                    __constant const uint8* restrict tweak_d,
+                    __global uint8* restrict ctx_d,
+                    const uint key_length_d,
+                    const uint ptx_size)
 {
     __private int item_idx;          /** Index of the work-item */
     __private int group_idx;         /** Index of the work-group */
@@ -331,15 +331,17 @@ void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
     item_idx = get_local_id(0);
     group_idx = get_group_id(0);
 
-    // This computation just single threaded
-
-
     __local aes_context context;
     __local uint8 input[16];
     __local uint8 output[16];
     __local uint8 key[32];
 
-    if(group_idx < ptx_size / 16) { /** Do not exceed plaintext size */
+    __local uint32 *RK;              /** Round key */
+    __local uint32 X0, X1, X2, X3;   /** Input blocks (shared in the wg) */
+    __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
+
+    // Perform this computation with one work_group per AES block
+    if(group_idx < (ptx_size / 16)) { 
 
       // Copying data into local memory to gain faster access
 
@@ -357,126 +359,123 @@ void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
       // XOR data with tweak
       for(int i=0; i<16; i++)
         input[i] ^= tweak_d[i+(16*group_idx)];
-    }
 
-    aes_set_key(&context, key, key_length_d);
+      aes_set_key(&context, key, key_length_d);
 
-    __local uint32 *RK;              /** Round key */
-    __local uint32 X0, X1, X2, X3;   /** Input blocks (shared in the wg) */
-    __local uint32 Y0, Y1, Y2, Y3;   /** Output blocks (shared in the wg) */
+      RK = context.erk;
 
-    RK = context.erk;
+      /** Round Zero */
+          if(item_idx < 4)
+          {
+          	switch(item_idx)		  /** adattamento dei dati ai 32 bit */
+          	{
+          		case 0:
+          			GET_UINT32( X0, input,  0 );
+                  X0 ^= RK[0];
+          			break;
+          		case 1:
+          			GET_UINT32( X1, input,  4 );
+                  X1 ^= RK[1];
+          			break;
+          		case 2:
+          			GET_UINT32( X2, input,  8 );
+                  X2 ^= RK[2];
+          			break;
+          		case 3:
+          			GET_UINT32( X3, input, 12 );
+                  X3 ^= RK[3];
+          			break;
+          	}
 
-    /** Round Zero */
-	if(item_idx < 4)
-	{
-		switch(item_idx)		  /** adattamento dei dati ai 32 bit */
-		{
-			case 0:
-				GET_UINT32( X0, input,  0 );
-                X0 ^= RK[0];
-				break;
-			case 1:
-				GET_UINT32( X1, input,  4 );
-                X1 ^= RK[1];
-				break;
-			case 2:
-				GET_UINT32( X2, input,  8 );
-                X2 ^= RK[2];
-				break;
-			case 3:
-				GET_UINT32( X3, input, 12 );
-                X3 ^= RK[3];
-				break;
-		}
-
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
+          	barrier(CLK_LOCAL_MEM_FENCE);
+          }
 
 
-	/** N-1 round di criptaggio, in base alla lunghezza della chiave */
-        #pragma unroll 13
-	for(int i=0; i<(context.nr-1); i++)
-	{
-		if(item_idx < 4)
-		{
-			barrier(CLK_LOCAL_MEM_FENCE);	 /** Thread syncronization */
+          /** N-1 round di criptaggio, in base alla lunghezza della chiave */
+          #pragma unroll 13
+          for(int i=0; i<(context.nr-1); i++)
+          {
+          	if(item_idx < 4)
+          	{
+          		barrier(CLK_LOCAL_MEM_FENCE);	 /** Thread syncronization */
 
-			switch(item_idx)
-			{
-				case 0:
-					aes_fround(&Y0, X0, X1, X2, X3, RK, item_idx);
-					break;
-				case 1:
-					aes_fround(&Y1, X0, X1, X2, X3, RK, item_idx);
-					break;
-				case 2:
-					aes_fround(&Y2, X0, X1, X2, X3, RK, item_idx);
-					break;
-				case 3:
-					aes_fround(&Y3, X0, X1, X2, X3, RK, item_idx);
-					break;
-			}
+          		switch(item_idx)
+          		{
+          			case 0:
+          				aes_fround(&Y0, X0, X1, X2, X3, RK, item_idx);
+          				break;
+          			case 1:
+          				aes_fround(&Y1, X0, X1, X2, X3, RK, item_idx);
+          				break;
+          			case 2:
+          				aes_fround(&Y2, X0, X1, X2, X3, RK, item_idx);
+          				break;
+          			case 3:
+          				aes_fround(&Y3, X0, X1, X2, X3, RK, item_idx);
+          				break;
+          		}
 
-			barrier(CLK_LOCAL_MEM_FENCE);	 /** Thread syncronization */
+          		barrier(CLK_LOCAL_MEM_FENCE);	 /** Thread syncronization */
 
-			X0 = Y0;
-			X1 = Y1;
-			X2 = Y2;
-			X3 = Y3;
-            RK += 4;
+          		X0 = Y0;
+          		X1 = Y1;
+          		X2 = Y2;
+          		X3 = Y3;
+              RK += 4;
 
-		}
-	}
-							  /** ultimo round */
-	RK += 4;
+          	}
+          }
+          						  /** ultimo round */
+          RK += 4;
 
-    if(item_idx < 4)
-    	{
-    		switch(item_idx)
-    		{
-    			case 0:
-    				X0 = RK[0] ^ ( FSb[ (uint8) ( Y0 >> 24 ) ] << 24 ) ^
-    				( FSb[ (uint8) ( Y1 >> 16 ) ] << 16 ) ^
-    				( FSb[ (uint8) ( Y2 >>  8 ) ] <<  8 ) ^
-    				( FSb[ (uint8) ( Y3       ) ]       );
-    				put_uint32( X0, output,  0 );
-    				break;
-    			case 1:
-    				X1 = RK[1] ^ ( FSb[ (uint8) ( Y1 >> 24 ) ] << 24 ) ^
-    				( FSb[ (uint8) ( Y2 >> 16 ) ] << 16 ) ^
-    				( FSb[ (uint8) ( Y3 >>  8 ) ] <<  8 ) ^
-    				( FSb[ (uint8) ( Y0       ) ]       );
-    				put_uint32( X1, output,  4 );
-    				break;
-    			case 2:
-    				X2 = RK[2] ^ ( FSb[ (uint8) ( Y2 >> 24 ) ] << 24 ) ^
-    				( FSb[ (uint8) ( Y3 >> 16 ) ] << 16 ) ^
-    				( FSb[ (uint8) ( Y0 >>  8 ) ] <<  8 ) ^
-    				( FSb[ (uint8) ( Y1       ) ]       );
-    				put_uint32( X2, output,  8 );
-    				break;
-    			case 3:
-    				X3 = RK[3] ^ ( FSb[ (uint8) ( Y3 >> 24 ) ] << 24 ) ^
-    				( FSb[ (uint8) ( Y0 >> 16 ) ] << 16 ) ^
-    				( FSb[ (uint8) ( Y1 >>  8 ) ] <<  8 ) ^
-    				( FSb[ (uint8) ( Y2       ) ]       );
-    				put_uint32( X3, output, 12 );
-    				break;
-    		}
+      if(item_idx < 4)
+      	{
+      		switch(item_idx)
+      		{
+      			case 0:
+      				X0 = RK[0] ^ ( FSb[ (uint8) ( Y0 >> 24 ) ] << 24 ) ^
+      				( FSb[ (uint8) ( Y1 >> 16 ) ] << 16 ) ^
+      				( FSb[ (uint8) ( Y2 >>  8 ) ] <<  8 ) ^
+      				( FSb[ (uint8) ( Y3       ) ]       );
+      				put_uint32( X0, output,  0 );
+      				break;
+      			case 1:
+      				X1 = RK[1] ^ ( FSb[ (uint8) ( Y1 >> 24 ) ] << 24 ) ^
+      				( FSb[ (uint8) ( Y2 >> 16 ) ] << 16 ) ^
+      				( FSb[ (uint8) ( Y3 >>  8 ) ] <<  8 ) ^
+      				( FSb[ (uint8) ( Y0       ) ]       );
+      				put_uint32( X1, output,  4 );
+      				break;
+      			case 2:
+      				X2 = RK[2] ^ ( FSb[ (uint8) ( Y2 >> 24 ) ] << 24 ) ^
+      				( FSb[ (uint8) ( Y3 >> 16 ) ] << 16 ) ^
+      				( FSb[ (uint8) ( Y0 >>  8 ) ] <<  8 ) ^
+      				( FSb[ (uint8) ( Y1       ) ]       );
+      				put_uint32( X2, output,  8 );
+      				break;
+      			case 3:
+      				X3 = RK[3] ^ ( FSb[ (uint8) ( Y3 >> 24 ) ] << 24 ) ^
+      				( FSb[ (uint8) ( Y0 >> 16 ) ] << 16 ) ^
+      				( FSb[ (uint8) ( Y1 >>  8 ) ] <<  8 ) ^
+      				( FSb[ (uint8) ( Y2       ) ]       );
+      				put_uint32( X3, output, 12 );
+      				break;
+      		}
 
-    barrier(CLK_GLOBAL_MEM_FENCE);
-    }
+      barrier(CLK_GLOBAL_MEM_FENCE);
+      }
 
-    // XOR again data with tweak
-    for(int i=0; i<16; i++)
-      output[i] ^= tweak_d[i+(16*group_idx)];
+      // XOR again data with tweak
+      //for(int i=0; i<16; i++)
+      //  output[i] ^= tweak_d[i+(16*group_idx)];
 
-    // Copy results back into host memory
+      // Copy results back into host memory
 
-    #pragma unroll
-    for(int i=0; i<4; i++)
-    {
-       ctx_d[(group_idx*16)+(item_idx*4)+i] = output[(item_idx*4)+i];
-    }
+      #pragma unroll
+      for(int i=0; i<4; i++)
+      {
+         ctx_d[(group_idx*16)+(item_idx*4)+i] = output[(item_idx*4)+i];
+      }
+
+    }   
 }
