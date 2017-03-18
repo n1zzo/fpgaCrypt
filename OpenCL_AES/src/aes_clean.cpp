@@ -30,7 +30,7 @@ using namespace aocl_utils;
 
 const unsigned int xts_key_size = 16;        // Key size in bytes
 const unsigned int iv_size = AES_BLK_BYTES;  // XTS IV size (1 cipher block)
-const size_t ptx_size_xts = 17;	     // XTS Plaintext size in bytes
+const size_t ptx_size_xts = 1034;	     // XTS Plaintext size in bytes
 
 const char *getErrorString(cl_int error);
 
@@ -401,26 +401,26 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
 
   // Compute last partial block and perform ctx stealing
   if(ptx_h.size() % AES_BLK_BYTES != 0) {
-    // Copy first chunk of the last complete block to the end of the ctx
-    int last_complete_index = (nblocks-1)*AES_BLK_BYTES;
-    auto last_complete_it = ctx_h.begin()+last_complete_index;
     int partial_block_size = ptx_h.size()%AES_BLK_BYTES;
-    copy(last_complete_it,
-         last_complete_it+partial_block_size,
-         last_complete_it+AES_BLK_BYTES);
+    int last_complete_block = (nblocks-1)*AES_BLK_BYTES;
+    auto last_complete_ctx_it = ctx_h.begin()+last_complete_block;
+    // Copy first chunk of the last complete block to the end of the ctx
+    copy(last_complete_ctx_it,
+         last_complete_ctx_it+partial_block_size,
+         last_complete_ctx_it+AES_BLK_BYTES);
     // Copy last partial block to the beginning of the last complete block
     auto partial_ptx_it = ptx_h.end()-partial_block_size;
-    copy(partial_ptx_it, ptx_h.end(), last_complete_it);
+    copy(partial_ptx_it, ptx_h.end(), last_complete_ctx_it);
     // XOR-Encrypt-XOR
     for(int i = 0; i < AES_BLK_BYTES; i++)
-      ctx_h[(nblocks-1)*AES_BLK_BYTES+i] ^= tweak[nblocks * AES_BLK_BYTES];
-    opencl_aes_crypt_ecb(last_complete_it,
-                         partial_ptx_it,
+      ctx_h[last_complete_block+i] ^= tweak[nblocks*AES_BLK_BYTES+i];
+    opencl_aes_crypt_ecb(last_complete_ctx_it,
+                         last_complete_ctx_it+AES_BLK_BYTES,
                          key1,
-                         last_complete_it,
-                         partial_ptx_it);
+                         last_complete_ctx_it,
+                         last_complete_ctx_it+AES_BLK_BYTES);
     for(int i = 0; i < AES_BLK_BYTES; i++)
-      ctx_h[(nblocks-1)*AES_BLK_BYTES+i] ^= tweak[nblocks * AES_BLK_BYTES];
+      ctx_h[last_complete_block+i] ^= tweak[nblocks*AES_BLK_BYTES+i];
   }
 }
 
@@ -449,6 +449,7 @@ void xts_test() {
   assert(urandom.good());
   urandom.close();
   
+  // NIST Test vectors
   //iv_h = {0x33, 0x33, 0x33, 0x33, 0x33, 0x00, 0x00, 0x00, 
   //        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   //
@@ -489,6 +490,6 @@ void xts_test() {
 }
 
 int main(int argc, char *argv[]) {
-  aes_test();
-  //xts_test();
+  //aes_test();
+  xts_test();
 }
