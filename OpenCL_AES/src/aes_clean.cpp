@@ -157,12 +157,11 @@ cl::Kernel createOpenClKernel(const cl::Context &context,
   return kernel;
 }
 
-void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
+void opencl_aes_crypt_ecb(vector<unsigned char>::iterator ptx_h_begin,
+                          vector<unsigned char>::iterator ptx_h_end,
                           vector<unsigned char> &key_h,
-                          vector<unsigned char> &ctx_h,
-                          uint64_t size,
-                          uint64_t in_offset = 0,
-                          uint64_t out_offset = 0) {
+                          vector<unsigned char>::iterator ctx_h_begin,
+                          vector<unsigned char>::iterator ctx_h_end) {
 
   // Verify key size is one of the supported ones
   int key_size_bits = key_h.size() * 8;
@@ -176,10 +175,10 @@ void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
   // Initialize opencl board
   cl::Context context = initOpenclPlatform();
 
-  cl::Buffer ptxBuffer(context, ptx_h.begin()+in_offset, ptx_h.begin()+in_offset+size, true, true, &err);
+  cl::Buffer ptxBuffer(context, ptx_h_begin, ptx_h_end, true, true, &err);
   checkErr(err, "Buffer::Buffer()");
 
-  cl::Buffer ctxBuffer(context, ctx_h.begin()+out_offset, ctx_h.begin()+out_offset+size, false, true, &err);
+  cl::Buffer ctxBuffer(context, ctx_h_begin, ctx_h_end, false, true, &err);
   checkErr(err, "Buffer::Buffer()");
 
   cl::Buffer keyBuffer(context, key_h.begin(), key_h.end(), true, true, &err);
@@ -195,7 +194,7 @@ void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
       "./aes_kernel",
       "aesEncrypt");
 
-  int ptx_size = ptx_h.size();
+  int ptx_size = distance(ptx_h_begin, ptx_h_end);
 
   err = kernel.setArg(0, ptxBuffer);
   checkErr(err, "Kernel::setArg()");
@@ -212,21 +211,17 @@ void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
   cl::CommandQueue queue(context, devices[0], 0, &err);
   checkErr(err, "CommandQueue::CommandQueue()");cl::Event event;
   err = queue.enqueueNDRangeKernel(kernel,
-      cl::NullRange,
-      cl::NDRange(4),
-      cl::NDRange(4),
-      NULL,
-      &event);
+                                   cl::NullRange,
+                                   cl::NDRange(4),
+                                   cl::NDRange(4),
+                                   NULL,
+                                   &event);
   checkErr(err, "CommandQueue::enqueueNDRangeKernel()");
+
+  int ctx_size = distance(ctx_h_begin, ctx_h_end);
 
   // Read results from device
   event.wait();
-  err = queue.enqueueReadBuffer(ctxBuffer,
-      CL_TRUE,
-      0,
-      ctx_h.size(),
-      ctx_h.data());
-  checkErr(err, "CommandQueue::enqueueReadBuffer()");
 }
 
 void aes_test() {
@@ -245,7 +240,9 @@ void aes_test() {
                                  0xab, 0xf7, 0x15, 0x88,
                                  0x09, 0xcf, 0x4f, 0x3c};
 
-  opencl_aes_crypt_ecb(ptx_h, key_h, ctx_h, ptx_h.size());
+  opencl_aes_crypt_ecb(ptx_h.begin(), ptx_h.end(),
+                       key_h,
+                       ctx_h.begin(), ctx_h.end());
 
   // Print results
   cout << endl << "Key is:                ";
@@ -312,9 +309,12 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
   vector<unsigned char> key2(key_h.begin()+(key_h.size()/2), key_h.end());
   int tweak_size = ptx_h.size()+(AES_BLK_BYTES-(ptx_h.size() % AES_BLK_BYTES)); 
   vector<unsigned char> tweak(tweak_size, 0);
+  vector<unsigned char>::iterator tweak_end = tweak.begin() + AES_BLK_BYTES;
 
   // Compute initial tweak value
-  opencl_aes_crypt_ecb(iv_h, key2, tweak, AES_BLK_BYTES);
+  opencl_aes_crypt_ecb(iv_h.begin(), iv_h.end(),
+                       key2,
+                       tweak.begin(), tweak_end);
   
   // Fill tweak vector
   for(int i = AES_BLK_BYTES; i < tweak_size; i++) {
@@ -414,10 +414,11 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
     // XOR-Encrypt-XOR
     for(int i = 0; i < AES_BLK_BYTES; i++)
       ctx_h[(nblocks-1)*AES_BLK_BYTES+i] ^= tweak[nblocks * AES_BLK_BYTES];
-    opencl_aes_crypt_ecb(ctx_h, key1, ctx_h,
-                         last_complete_index,
-                         last_complete_index,
-                         AES_BLK_BYTES);
+    opencl_aes_crypt_ecb(last_complete_it,
+                         partial_ptx_it,
+                         key1,
+                         last_complete_it,
+                         partial_ptx_it);
     for(int i = 0; i < AES_BLK_BYTES; i++)
       ctx_h[(nblocks-1)*AES_BLK_BYTES+i] ^= tweak[nblocks * AES_BLK_BYTES];
   }
@@ -488,6 +489,6 @@ void xts_test() {
 }
 
 int main(int argc, char *argv[]) {
-  //aes_test();
-  xts_test();
+  aes_test();
+  //xts_test();
 }
