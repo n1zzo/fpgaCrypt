@@ -17,6 +17,7 @@ all: $(NAME)
 
 $(NAME): $(OBJECTS)
 	$(CC) $(INCLUDE) $^ -o $@ $(CFLAGS) $(LDFLAGS) -L $(LIBDIR)
+	mkdir -p $(BINDIR)
 	@mv $@ $(BINDIR)/$@
 
 $(SRCDIR)/%.o: %.cpp
