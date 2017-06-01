@@ -1,4 +1,4 @@
-#include <CL/cl.hpp> 
+#include <CL/cl2.hpp> 
 
 const char *getErrorString(cl_int error)
 {

@@ -1,6 +1,8 @@
 #include "mbedtls/aes.h"
 #include "AOCLUtils/aocl_utils.h"
 
+#define CL_HPP_TARGET_OPENCL_VERSION 200
+
 #include <utility>
 #include <CL/cl2.hpp>
 
