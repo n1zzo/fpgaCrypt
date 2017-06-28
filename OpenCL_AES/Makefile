@@ -10,7 +10,7 @@ SOURCES    = $(SRCDIR)/aes_clean.cpp $(SRCDIR)/cl_errors.cpp ./common/src/AOCLUt
 KERNELS    = $(SRCDIR)/aes_kernel.cl $(SRCDIR)/aes_xts_kernel.cl
 AOCX       = $(KERNELS:.cl=.aocx)
 OBJECTS    = $(SOURCES:.c=.o)
-BOARD      = a10gx
+BOARD      = attila_v3_prod
 MBEDTLS    = ../mbedtls-xts
 
 all: $(NAME)
@@ -31,7 +31,7 @@ fpga: host $(AOCX)
 profile: AOCFLAGS = --profile
 profile: host $(AOCX)
 
-emu: AOCFLAGS = -march=emulator
+emu: AOCFLAGS = -march=emulator --profile
 emu: host $(AOCX)
 
 host: LDFLAGS += $(shell aocl linkflags)
@@ -39,14 +39,15 @@ host: LDFLAGS += -I /home/opencl-crypt/intelFPGA_pro/17.0/hld/host/include20/
 host: $(NAME)
 
 $(SRCDIR)/%.aocx: $(SRCDIR)/%.cl
-	aoc $(AOCFLAGS) -v --board $(BOARD) $^ -o $@
+	time aoc $(AOCFLAGS) -v $^ -o $@ --board $(BOARD)
 	@mv $@ $(BINDIR)
 
 run:    host emu
 	cd $(BINDIR); env CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 ./$(NAME)
 
 clean:
-	rm $(BINDIR)/*
-	rm nfa_regexp_debug.log nfa_regexp_dump.log nfa_regexp_run.log
-	rm -rf $(SRCDIR)/aes_kernel $(SRCDIR)/aes_kernel.aoco
+	rm -f $(BINDIR)/*
+	rm -f nfa_regexp_debug.log nfa_regexp_dump.log nfa_regexp_run.log
+	rm -rf $(SRCDIR)/aes_kernel $(SRCDIR)/aes_xts_kernel
+	rm -f $(SRCDIR)/aes_kernel.aoco $(SRCDIR)/aes_xts_kernel.aoco
 

@@ -3,3 +3,4 @@ src/aes_kernel.aoco
 src/aes_kernel/
 src/aes_xts_kernel.aoco
 src/aes_xts_kernel/
+bin/
