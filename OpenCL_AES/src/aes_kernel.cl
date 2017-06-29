@@ -160,6 +160,32 @@ void put_uint32(uint32 n, __local uint8 *b, uint8 i)
         b[i+3] = (uint8) ( n       );       \
 }
 
+// XOR the round key into every column and obtain a local column X0
+inline void AddRoundKeys( __local uint32 *X0,
+                          uint32 Y0, uint32 Y1, uint32 Y2, uint32 Y3,
+                          __local uint32 RK[], int idx) {
+    if(idx < 4)
+    {
+        RK += 4;
+        switch(idx)
+        {
+            case 0:
+                *X0 = Y0 ^ RK[0];
+                break;
+            case 1:
+                *X0 = Y1 ^ RK[1];
+                break;
+            case 2:
+                *X0 = Y2 ^ RK[2];
+                break;
+            case 3:
+                *X0 = Y3 ^ RK[3];
+                break;
+        }
+    }
+}
+
+
 /**
 *
 *       Function for applying a single AES round
@@ -232,7 +258,7 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
     RK = context->erk;
 
     #pragma unroll 8
-    for( i = 0; i < (nbits >> 5); i++ )		/** passaggio a 32 bit */
+    for( i = 0; i < (nbits >> 5); i++ )	  // Convert data into 32 bits
     {
         GET_UINT32( RK[i], key, i << 2 );
     }
@@ -353,10 +379,10 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
 
     idx = get_global_id(0);
 
-    /** Round Zero */
+    // First AddRoundKey operation
 	if(idx < 4)
 	{
-		switch(idx)		  /** adattamento dei dati ai 32 bit */
+		switch(idx)		  // Splitting data to 32 bits
 		{
 			case 0:
 				GET_UINT32( X0, input,  0 );
@@ -380,7 +406,7 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
 	}
 
 
-	/** N-1 round di criptaggio, in base alla lunghezza della chiave */
+        // N-1 encryption rounds, according to key length
         #pragma unroll 13
 	for(int i=0; i<(context.nr-1); i++)
 	{
@@ -414,7 +440,7 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
 
 		}
 	}
-							  /** ultimo round */
+							  // Last round
 	RK += 4;
 
     if(idx < 4)
