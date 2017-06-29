@@ -8,12 +8,12 @@
 
 typedef struct
 {
-    uint32 erk[64];     /** chiave di criptaggio per il round */
-    int nr;             /** numero di round*/
+  uint32 erk[64];     // Round Key
+  int nr;             // Round Number
 }
-aes_context;		/** definizione del contesto */
+aes_context;      
 
-__constant const uint8 FSb[256] =       /** Forward S-box */
+__constant const uint8 FSb[256] =   // Forward S-box
 {
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5,
     0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
@@ -49,7 +49,7 @@ __constant const uint8 FSb[256] =       /** Forward S-box */
     0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
 };
 
-								/** tabella T per il criptaggio */
+// Galois field multiplication lookup table
 
 #define FT \
 \
@@ -118,7 +118,7 @@ V(65,BF,BF,DA), V(D7,E6,E6,31), V(84,42,42,C6), V(D0,68,68,B8), \
 V(82,41,41,C3), V(29,99,99,B0), V(5A,2D,2D,77), V(1E,0F,0F,11), \
 V(7B,B0,B0,CB), V(A8,54,54,FC), V(6D,BB,BB,D6), V(2C,16,16,3A)
 
-/** creazione di quattro tabelle per il criptaggio parallelo */
+// Building four tables for parallel encryption
 #define V(a,b,c,d) 0x##a##b##c##d
 __constant const uint32 FT0[256] = { FT };
 #undef V
@@ -137,21 +137,21 @@ __constant const uint32 FT3[256] = { FT };
 
 #undef FT
 
-__constant const uint32 RCON[10] =       /** costante per il round */
+__constant const uint32 RCON[10] =
 {
     0x01000000, 0x02000000, 0x04000000, 0x08000000,
     0x10000000, 0x20000000, 0x40000000, 0x80000000,
     0x1B000000, 0x36000000
 };
 
-/** Passaggio da un quarto di dati (4 bit) ai 32 bit per la manipolazione */
+// 4 byte to 32 bit for manipulation
 #define GET_UINT32(n,b,i) ((n) =                           \
 			  ((uint32) (b)[(i)] << 24 ) |     \
 			  ((uint32) (b)[(i) + 1] << 16 ) | \
 			  ((uint32) (b)[(i) + 2] << 8  ) | \
 			  ((uint32) (b)[(i) + 3]))
 
-/** Passaggio da 32 bit a 4 byte per la ricomposizione del dato criptato */
+// 32 bit to 4 byte for composing the encrypted data
 void put_uint32(uint32 n, __local uint8 *b, uint8 i)
 {
         b[i  ] = (uint8) ( n >> 24 );       \
@@ -162,9 +162,9 @@ void put_uint32(uint32 n, __local uint8 *b, uint8 i)
 
 /**
 *
-*	Funzione per l'applicazione di un singolo round dell'algoritmo AES
-* 	/param X0 risultato del round
-*	/param Y0, Y1, Y2, Y3 dati in ingresso e risultati del round precedente
+*       Function for applying a single AES round
+* 	/param X0 round result
+*	/param Y0, Y1, Y2, Y3 input data and previous round results
 *
 */
 void aes_fround( __local uint32 *X0,
@@ -174,8 +174,8 @@ void aes_fround( __local uint32 *X0,
 	if(idx < 4)
 	{
 		RK += 4;
-		switch(idx)   /** suddivisione e criptaggio delle paraole eseguite da thread */
-		{	      /** paralleli, uno per ogni quarto di dato */
+		switch(idx)   // 4-way parallel encryption
+		{	    
 			case 0:
 				*X0 = RK[0] ^ FT0[ (uint8) ( Y0 >> 24 ) ] ^
 				FT1[ (uint8) ( Y1 >> 16 ) ] ^
@@ -206,10 +206,10 @@ void aes_fround( __local uint32 *X0,
 
 /**
 *
-*	Settaggio della chiave per il criptaggio
-*	/param context contesto
-*	/param bey chiave iniziale
-*	/param nbits lunghezza chiave
+*	Setting encryption key
+*	/param context encryption context
+*	/param bey input key
+*	/param nbits key length
 *
 */
 
@@ -314,20 +314,15 @@ int aes_set_key( __local aes_context *context, __local const uint8 *key, int nbi
 *	/param key_d cipher key
 *	/param ctx_d ciphertext
 *	/param key_length_d keylength in bit
-*	/param ptx_size plaintext size in bytes
 *
 */
 __kernel __attribute__((reqd_work_group_size(4, 1, 1)))
 void aesEncrypt (__constant const uint8* restrict ptx_d,
                           __constant const uint8* restrict key_d,
                           __global uint8* restrict ctx_d,
-                          const uint key_length_d,
-                          const uint ptx_size)
+                          const uint key_length_d)
 {
-    // [TODO] ptx_size parameter is actually never used!
-    // We will use it to implement XTS mode of operation
-
-    // This computation just single threaded
+    // This computation is just single threaded
 
     __local aes_context context;
     __local uint8 input[16];

@@ -206,8 +206,6 @@ void opencl_aes_crypt_ecb(vector<unsigned char>::iterator ptx_h_begin,
   checkErr(err, "Kernel::setArg()");
   err = kernel.setArg(3, key_size_bits);
   checkErr(err, "Kernel::setArg()");
-  err = kernel.setArg(4, ptx_size);
-  checkErr(err, "Kernel::setArg()");
 
   // Create command queue and run kernel
   cl::CommandQueue queue(context, devices[0], 0, &err);

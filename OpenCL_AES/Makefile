@@ -31,7 +31,7 @@ fpga: host $(AOCX)
 profile: AOCFLAGS = --profile
 profile: host $(AOCX)
 
-emu: AOCFLAGS = -march=emulator --profile
+emu: AOCFLAGS = -march=emulator
 emu: host $(AOCX)
 
 host: LDFLAGS += $(shell aocl linkflags)
