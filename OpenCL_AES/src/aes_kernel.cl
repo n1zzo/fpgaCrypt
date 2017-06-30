@@ -8,8 +8,8 @@
 
 typedef struct
 {
-  uint32 erk[64];     // Round Key
-  int nr;             // Round Number
+    uint32 erk[64];     // Round Key
+    int nr;             // Round Number
 }
 aes_context;
 
@@ -58,28 +58,28 @@ __constant const uint32 RCON[10] =
 
 // 4 byte to 32 bit for manipulation
 #define GET_UINT32(n,b,i) ((n) =                           \
-			  ((uint32) (b)[(i)] << 24 ) |     \
-			  ((uint32) (b)[(i) + 1] << 16 ) | \
-			  ((uint32) (b)[(i) + 2] << 8  ) | \
-			  ((uint32) (b)[(i) + 3]))
+        ((uint32) (b)[(i)] << 24 ) |     \
+        ((uint32) (b)[(i) + 1] << 16 ) | \
+        ((uint32) (b)[(i) + 2] << 8  ) | \
+        ((uint32) (b)[(i) + 3]))
 
 // 32 bit to 4 byte for composing the encrypted data
 void put_uint32(uint32 n, __local uint8 *b, uint8 i)
 {
-        b[i  ] = (uint8) ( n >> 24 );       \
-        b[i+1] = (uint8) ( n >> 16 );       \
-        b[i+2] = (uint8) ( n >>  8 );       \
-        b[i+3] = (uint8) ( n       );       \
+    b[i  ] = (uint8) ( n >> 24 );       \
+             b[i+1] = (uint8) ( n >> 16 );       \
+             b[i+2] = (uint8) ( n >>  8 );       \
+             b[i+3] = (uint8) ( n       );       \
 }
 
 /**
-*
-*	Setting encryption key
-*	/param context encryption context
-*	/param bey input key
-*	/param nbits key length
-*
-*/
+ *
+ *	Setting encryption key
+ *	/param context encryption context
+ *	/param bey input key
+ *	/param nbits key length
+ *
+ */
 
 int aes_set_key( __local aes_context *context, __constant const uint8 *key, int nbits )
 {
@@ -99,7 +99,7 @@ int aes_set_key( __local aes_context *context, __constant const uint8 *key, int 
     /** Initializing pointer to round key */
     RK = context->erk;
 
-    #pragma unroll 8
+#pragma unroll 8
     for( i = 0; i < (nbits >> 5); i++ )	  // Convert data into 32 bits
     {
         GET_UINT32( RK[i], key, i << 2 );
@@ -107,68 +107,68 @@ int aes_set_key( __local aes_context *context, __constant const uint8 *key, int 
 
     switch( context->nr )
     {
-	case 10:
+        case 10:
 
-        #pragma unroll
-        for( i = 0; i < 10; i++, RK += 4 )
-        {
-            RK[4]  = RK[0] ^ RCON[i] ^
-            ( SBox[ (uint8) ( RK[3] >> 16 ) ] << 24 ) ^
-            ( SBox[ (uint8) ( RK[3] >>  8 ) ] << 16 ) ^
-            ( SBox[ (uint8) ( RK[3]       ) ] <<  8 ) ^
-            ( SBox[ (uint8) ( RK[3] >> 24 ) ]       );
+#pragma unroll
+            for( i = 0; i < 10; i++, RK += 4 )
+            {
+                RK[4]  = RK[0] ^ RCON[i] ^
+                    ( SBox[ (uint8) ( RK[3] >> 16 ) ] << 24 ) ^
+                    ( SBox[ (uint8) ( RK[3] >>  8 ) ] << 16 ) ^
+                    ( SBox[ (uint8) ( RK[3]       ) ] <<  8 ) ^
+                    ( SBox[ (uint8) ( RK[3] >> 24 ) ]       );
 
-            RK[5]  = RK[1] ^ RK[4];
-            RK[6]  = RK[2] ^ RK[5];
-            RK[7]  = RK[3] ^ RK[6];
-        }
-        break;
+                RK[5]  = RK[1] ^ RK[4];
+                RK[6]  = RK[2] ^ RK[5];
+                RK[7]  = RK[3] ^ RK[6];
+            }
+            break;
 
-	case 12:
+        case 12:
 
-        #pragma unroll
-        for( i = 0; i < 8; i++, RK += 6 )
-        {
-            RK[6]  = RK[0] ^ RCON[i] ^
-            ( SBox[ (uint8) ( RK[5] >> 16 ) ] << 24 ) ^
-            ( SBox[ (uint8) ( RK[5] >>  8 ) ] << 16 ) ^
-            ( SBox[ (uint8) ( RK[5]       ) ] <<  8 ) ^
-            ( SBox[ (uint8) ( RK[5] >> 24 ) ]       );
+#pragma unroll
+            for( i = 0; i < 8; i++, RK += 6 )
+            {
+                RK[6]  = RK[0] ^ RCON[i] ^
+                    ( SBox[ (uint8) ( RK[5] >> 16 ) ] << 24 ) ^
+                    ( SBox[ (uint8) ( RK[5] >>  8 ) ] << 16 ) ^
+                    ( SBox[ (uint8) ( RK[5]       ) ] <<  8 ) ^
+                    ( SBox[ (uint8) ( RK[5] >> 24 ) ]       );
 
-            RK[7]  = RK[1] ^ RK[6];
-            RK[8]  = RK[2] ^ RK[7];
-            RK[9]  = RK[3] ^ RK[8];
-            RK[10] = RK[4] ^ RK[9];
-            RK[11] = RK[5] ^ RK[10];
-        }
-        break;
+                RK[7]  = RK[1] ^ RK[6];
+                RK[8]  = RK[2] ^ RK[7];
+                RK[9]  = RK[3] ^ RK[8];
+                RK[10] = RK[4] ^ RK[9];
+                RK[11] = RK[5] ^ RK[10];
+            }
+            break;
 
-    case 14:
+        case 14:
 
-        #pragma unroll
-        for( i = 0; i < 7; i++, RK += 8 )
-        {
-            RK[8]  = RK[0] ^ RCON[i] ^
-            ( SBox[ (uint8) ( RK[7] >> 16 ) ] << 24 ) ^
-            ( SBox[ (uint8) ( RK[7] >>  8 ) ] << 16 ) ^
-            ( SBox[ (uint8) ( RK[7]       ) ] <<  8 ) ^
-            ( SBox[ (uint8) ( RK[7] >> 24 ) ]       );
+#pragma unroll
+            for( i = 0; i < 7; i++, RK += 8 )
+            {
+                RK[8]  = RK[0] ^ RCON[i] ^
+                    ( SBox[ (uint8) ( RK[7] >> 16 ) ] << 24 ) ^
+                    ( SBox[ (uint8) ( RK[7] >>  8 ) ] << 16 ) ^
+                    ( SBox[ (uint8) ( RK[7]       ) ] <<  8 ) ^
+                    ( SBox[ (uint8) ( RK[7] >> 24 ) ]       );
 
-            RK[9]  = RK[1] ^ RK[8];
-            RK[10] = RK[2] ^ RK[9];
-            RK[11] = RK[3] ^ RK[10];
+                RK[9]  = RK[1] ^ RK[8];
+                RK[10] = RK[2] ^ RK[9];
+                RK[11] = RK[3] ^ RK[10];
 
-            RK[12] = RK[4] ^
-            ( SBox[ (uint8) ( RK[11] >> 24 ) ] << 24 ) ^
-            ( SBox[ (uint8) ( RK[11] >> 16 ) ] << 16 ) ^
-            ( SBox[ (uint8) ( RK[11] >>  8 ) ] <<  8 ) ^
-            ( SBox[ (uint8) ( RK[11]       ) ]       );
+                RK[12] = RK[4] ^
+                    ( SBox[ (uint8) ( RK[11] >> 24 ) ] << 24 ) ^
+                    ( SBox[ (uint8) ( RK[11] >> 16 ) ] << 16 ) ^
+                    ( SBox[ (uint8) ( RK[11] >>  8 ) ] <<  8 ) ^
+                    ( SBox[ (uint8) ( RK[11]       ) ]       );
 
-            RK[13] = RK[5] ^ RK[12];
-            RK[14] = RK[6] ^ RK[13];
-            RK[15] = RK[7] ^ RK[14];
-        }
-        break;
+                RK[13] = RK[5] ^ RK[12];
+                RK[14] = RK[6] ^ RK[13];
+                RK[15] = RK[7] ^ RK[14];
+            }
+            break;
     }
 
     return( 0 );
@@ -176,19 +176,19 @@ int aes_set_key( __local aes_context *context, __constant const uint8 *key, int 
 }
 
 /**
-*
-*       Kernel entry point
-*	/param ptx_d plaintext
-*	/param key_d cipher key
-*	/param ctx_d ciphertext
-*	/param key_length_d keylength in bit
-*
-*/
-__kernel __attribute__((reqd_work_group_size(16, 1, 1)))
+ *
+ *       Kernel entry point
+ *	/param ptx_d plaintext
+ *	/param key_d cipher key
+ *	/param ctx_d ciphertext
+ *	/param key_length_d keylength in bit
+ *
+ */
+    __kernel __attribute__((reqd_work_group_size(16, 1, 1)))
 void aesEncrypt (__constant const uint8* restrict ptx_d,
-                          __constant const uint8* restrict key_d,
-                          __global uint8* restrict ctx_d,
-                          const uint key_length_d)
+        __constant const uint8* restrict key_d,
+        __global uint8* restrict ctx_d,
+        const uint key_length_d)
 {
     __local aes_context context;
     __local uint8 output[16];
@@ -200,7 +200,7 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
     __local uint8 X[16];                    // Input blocks (shared in the wg)
     __local uint8 Y[16];                    // Working blocks (shared in the wg)
     __local uint8 Z[16];                    // Output blocks (shared in the wg)
-    __private size_t g_size = get_global_size(0); // Work-group size
+    __private size_t g_size = get_local_size(0); // Work-group size
     __private size_t id = get_global_id(0); // Index of the current element
     //printf("Hello, I am work item number %d and my byte is %x\n", id, Y[id]);
 
@@ -208,80 +208,80 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
     // in the arrays corresponds to the first column on the left
 
     // Convert 32bit expanded key array into an 8bit array
-    #pragma unroll 2
     // Split work across work-items, every work-item will perform a certain
     // number of rounds and rem other work items will perform a round once more
     int rounds = (context.nr+1)*4/g_size;
     int rem = ((context.nr+1)*4)%g_size;
+#pragma unroll 2
     for(int i = 0; i < rounds; i++)
         put_uint32(context.erk[i*16+id], RK, 4*(i*16+id));
     if(id < rem)
         put_uint32(context.erk[rounds*16+id],
-                   RK,
-                   4*(rounds*16+id));
+                RK,
+                4*(rounds*16+id));
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
     // First AddRoundKey operation
     X[id] = ptx_d[id] ^ RK[id];
 
-	barrier(CLK_LOCAL_MEM_FENCE); 
+    barrier(CLK_LOCAL_MEM_FENCE);
 
     // N-1 encryption rounds, according to key length
-    #pragma unroll 1  // Can't unroll because of data dependencies
-	for(int round_num=1; round_num < context.nr; round_num++)
-	{
+#pragma unroll 1  // Can't unroll because of data dependencies
+    for(int round_num=1; round_num < context.nr; round_num++)
+    {
 
         barrier(CLK_LOCAL_MEM_FENCE);
 
         // SubBytes
-        Y[id] = SBox[X[id]]; 
+        Y[id] = SBox[X[id]];
 
-		barrier(CLK_LOCAL_MEM_FENCE);
-        
+        barrier(CLK_LOCAL_MEM_FENCE);
+
         // ShiftRows
         __private int i = id % 4;
         __private int j = id / 4;
         Z[i+4*((j-i+4)%4)] = Y[i+4*j];
 
-		barrier(CLK_LOCAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
 
         // MixColumns
         if(id < 4) { // This has a 4-way parallelism
-          uint8 a[4], b[4];                                               
+            uint8 a[4], b[4];
             for (int i=0; i < 4; i++) {
-              a[i] = Z[id * 4 + i];
-              b[i] = (a[i] << 1) ^ ((a[i] & 0x80) ? 0x1b : 0x00);
+                a[i] = Z[id * 4 + i];
+                b[i] = (a[i] << 1) ^ ((a[i] & 0x80) ? 0x1b : 0x00);
             }
-            
+
             // 2*a0 + 3*a1 +   a2 +   a3
             //   a0 * 2*a1 + 3*a2 +   a3
             //   a0 +   a1 + 2*a2 + 3*a3
             // 3*a0 +   a1 +   a2 + 2*a3
-            
+
             Z[id * 4] = b[0] ^ a[1] ^ b[1] ^ a[2] ^ a[3];
             Z[id * 4 + 1] = a[0] ^ b[1] ^ a[2] ^ b[2] ^ a[3];
             Z[id * 4 + 2] = a[0] ^ a[1] ^ b[2] ^ a[3] ^ b[3];
             Z[id * 4 + 3] = a[0] ^ b[0] ^ a[1] ^ a[2] ^ b[3];
         }
 
-		barrier(CLK_LOCAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
 
         // AddRoundKey
         Z[id] ^= RK[(round_num*16)+id];
 
-		barrier(CLK_LOCAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
 
         // Output becomes input of the next round
         X[id] = Z[id];
-	}
+    }
 
     // Last round
-    
+
     barrier(CLK_LOCAL_MEM_FENCE);
 
     // SubBytes
-    Y[id] = SBox[X[id]]; 
+    Y[id] = SBox[X[id]];
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -290,7 +290,7 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
     __private int j = id / 4;
     Z[i+4*((j-i+4)%4)] = Y[i+4*j];
 
-	barrier(CLK_LOCAL_MEM_FENCE);
+    barrier(CLK_LOCAL_MEM_FENCE);
 
     // AddRoundKey
     Z[id] ^= RK[(context.nr*16)+id];
