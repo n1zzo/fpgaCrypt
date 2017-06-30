@@ -380,8 +380,8 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
   checkErr(err, "CommandQueue::CommandQueue()");cl::Event event;
   err = queue.enqueueNDRangeKernel(kernel,
       cl::NullRange,
-      cl::NDRange(4*nblocks),
-      cl::NDRange(4),
+      cl::NDRange(16*nblocks),
+      cl::NDRange(16),
       NULL,
       &event);
   checkErr(err, "CommandQueue::enqueueNDRangeKernel()");
@@ -491,6 +491,6 @@ void xts_test() {
 }
 
 int main(int argc, char *argv[]) {
-  aes_test();
-  //xts_test();
+  //aes_test();
+  xts_test();
 }
