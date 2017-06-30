@@ -72,20 +72,6 @@ void put_uint32(uint32 n, __local uint8 *b, uint8 i)
         b[i+3] = (uint8) ( n       );       \
 }
 
-// 32bit bitwise rotation function
-inline uint32 rotl32(uint32 n, unsigned int c)
-{
-  const unsigned int mask = (CHAR_BIT*sizeof(n) - 1);
-  c &= mask;
-  return (n<<c) | (n>>( (-c)&mask ));
-}
-
-inline void swap(__local uint8 *a, __local uint8 *b) {
-    uint32 temp = *a;
-    *a = *b;
-    *b = temp;
-}
-
 /**
 *
 *	Setting encryption key
