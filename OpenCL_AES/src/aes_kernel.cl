@@ -198,7 +198,7 @@ int aes_set_key( __local aes_context *context, __constant const uint8 *key, int 
 *	/param key_length_d keylength in bit
 *
 */
-__kernel __attribute__((reqd_work_group_size(4, 1, 1)))
+__kernel __attribute__((reqd_work_group_size(16, 1, 1)))
 void aesEncrypt (__constant const uint8* restrict ptx_d,
                           __constant const uint8* restrict key_d,
                           __global uint8* restrict ctx_d,
@@ -209,158 +209,106 @@ void aesEncrypt (__constant const uint8* restrict ptx_d,
 
     aes_set_key(&context, key_d, key_length_d); // Key expansion
 
-    __local uint8 RK[32];              /** Round key */
-    __private int idx;               /** Index of the working item */
-    __local uint8 X[16];             /** Input blocks (shared in the wg) */
-    __local uint8 Y[16];             /** Output blocks (shared in the wg) */
+    __local uint8 RK[224];                   // Round key
+    __private int idx;                      // Index of the working item
+    __local uint8 X[16];                    // Input blocks (shared in the wg)
+    __local uint8 Y[16];                    // Working blocks (shared in the wg)
+    __local uint8 Z[16];                    // Output blocks (shared in the wg)
+    __private size_t g_size = get_global_size(0); // Work-group size
+    __private size_t id = get_global_id(0); // Index of the current element
+    //printf("Hello, I am work item number %d and my byte is %x\n", id, Y[id]);
 
     // Note that bytes are inserted columns by rows, so the first 4 bytes
     // in the arrays corresponds to the first column on the left
 
     // Convert 32bit expanded key array into an 8bit array
-    #pragma unroll 4  // This unrolls up to 8 according to key length
-    for(int i = 0; i < context.nr*4; i++)
-        put_uint32(context.erk[i], RK, 4*i);
+    #pragma unroll 2
+    // Split work across work-items, every work-item will perform a certain
+    // number of rounds and rem other work items will perform a round once more
+    int rounds = (context.nr+1)*4/g_size;
+    int rem = ((context.nr+1)*4)%g_size;
+    for(int i = 0; i < rounds; i++)
+        put_uint32(context.erk[i*16+id], RK, 4*(i*16+id));
+    if(id < rem)
+        put_uint32(context.erk[rounds*16+id],
+                   RK,
+                   4*(rounds*16+id));
+
+    barrier(CLK_LOCAL_MEM_FENCE);
 
     // First AddRoundKey operation
-    #pragma unroll 16
-    for(int i = 0; i < 16; i++)
-        X[i] = ptx_d[i] ^ RK[i];
+    X[id] = ptx_d[id] ^ RK[id];
 
-	barrier(CLK_LOCAL_MEM_FENCE);
+	barrier(CLK_LOCAL_MEM_FENCE); 
 
     // N-1 encryption rounds, according to key length
     #pragma unroll 1  // Can't unroll because of data dependencies
-	//for(int round_num=1; round_num<(context.nr-1); round_num++)
-    for(int round_num=1; round_num<3; round_num++)
+	for(int round_num=1; round_num < context.nr; round_num++)
 	{
 
         barrier(CLK_LOCAL_MEM_FENCE);
 
         // SubBytes
-        #pragma unroll 16
-        for(int i = 0; i < 16; i++)
-            Y[i] = SBox[X[i]]; 
+        Y[id] = SBox[X[id]]; 
 
-        barrier(CLK_LOCAL_MEM_FENCE);
-
+		barrier(CLK_LOCAL_MEM_FENCE);
+        
         // ShiftRows
-        uint8 tmp;
-        if(get_global_id(0) == 0) { // [TODO] Make this parallel please
-            // Second row [x10 x11 x12 x13] to [x11 x12 x13 x10]
-            tmp = Y[1];
-            Y[1] = Y[1 + 4];      // x10' <- x11
-            Y[1 + 4] = Y[1 + 8];  // x11' <- x12
-            Y[1 + 8] = Y[1 + 12]; // x12' <- x13
-            Y[1 + 12] = tmp;          // x13' <- x10
-            
-            // Third row [x20 x21 x22 x23] to [x22 x23 x20 x21]
-            tmp = Y[2];
-            Y[2] = Y[2 + 8];      // x20' <- x22
-            Y[2 + 8] = tmp;           // x_22' <- x20
-            tmp = Y[2 + 4];
-            Y[2 + 4] = Y[2 + 12]; // x21' <- x23
-            Y[2 + 12] = tmp;          // x23' <- x21
-            
-            // Fourth row [x30 x31 x32 x33] to [x33 x30 x31 x32]
-            tmp = Y[3];
-            Y[3] = Y[3 + 12];      // x30' <- x33
-            Y[3 + 12] = Y[3 + 8];  // x33' <- x32
-            Y[3 + 8] = Y[3 + 4];   // x32' <- x31
-            Y[3 + 4] = tmp;            // x31' <- x30
-        }
+        __private int i = id % 4;
+        __private int j = id / 4;
+        Z[i+4*((j-i+4)%4)] = Y[i+4*j];
 
 		barrier(CLK_LOCAL_MEM_FENCE);
 
         // MixColumns
-        uint8 a[4], b[4];
-        if(get_global_id(0) == 0) { // [TODO] Make this parallel please
-            #pragma unroll 4 
-            for (int c=0; c < 4; c++) {
-              for (int i=0; i < 4; i++) {
-                a[i] = Y[c * 4 + i];
-                b[i] = (a[i] << 1) ^ ((a[i] & 0x80) ? 0x1b : 0x00);
-              }
-            
-              // 2*a0 + 3*a1 +   a2 +   a3
-              //   a0 * 2*a1 + 3*a2 +   a3
-              //   a0 +   a1 + 2*a2 + 3*a3
-              // 3*a0 +   a1 +   a2 + 2*a3
-            
-              Y[c * 4] = b[0] ^ a[1] ^ b[1] ^ a[2] ^ a[3];
-              Y[c * 4 + 1] = a[0] ^ b[1] ^ a[2] ^ b[2] ^ a[3];
-              Y[c * 4 + 2] = a[0] ^ a[1] ^ b[2] ^ a[3] ^ b[3];
-              Y[c * 4 + 3] = a[0] ^ b[0] ^ a[1] ^ a[2] ^ b[3];
+        if(id < 4) { // This has a 4-way parallelism
+          uint8 a[4], b[4];                                               
+            for (int i=0; i < 4; i++) {
+              a[i] = Z[id * 4 + i];
+              b[i] = (a[i] << 1) ^ ((a[i] & 0x80) ? 0x1b : 0x00);
             }
+            
+            // 2*a0 + 3*a1 +   a2 +   a3
+            //   a0 * 2*a1 + 3*a2 +   a3
+            //   a0 +   a1 + 2*a2 + 3*a3
+            // 3*a0 +   a1 +   a2 + 2*a3
+            
+            Z[id * 4] = b[0] ^ a[1] ^ b[1] ^ a[2] ^ a[3];
+            Z[id * 4 + 1] = a[0] ^ b[1] ^ a[2] ^ b[2] ^ a[3];
+            Z[id * 4 + 2] = a[0] ^ a[1] ^ b[2] ^ a[3] ^ b[3];
+            Z[id * 4 + 3] = a[0] ^ b[0] ^ a[1] ^ a[2] ^ b[3];
         }
 
 		barrier(CLK_LOCAL_MEM_FENCE);
 
-        if(get_global_id(0) == 0) { // [TODO] Make this parallel please {
-            // AddRoundKey
-            #pragma unroll 16
-            for(int i = 0; i < 16; i++)
-                Y[i] ^= RK[(round_num*16)+i];
-        }
-
-        if(round_num == 2)
-            break;
+        // AddRoundKey
+        Z[id] ^= RK[(round_num*16)+id];
 
 		barrier(CLK_LOCAL_MEM_FENCE);
 
         // Output becomes input of the next round
-        #pragma unroll 16
-        for(int i = 0; i < 16; i++) 
-            X[i] = Y[i];
+        X[id] = Z[id];
 	}
-/*
 
     // Last round
     
+    barrier(CLK_LOCAL_MEM_FENCE);
+
     // SubBytes
-    #pragma unroll 16
-    for(int i = 0; i < 16; i++)
-        Y[i] = SBox[X[i]]; 
+    Y[id] = SBox[X[id]]; 
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
     // ShiftRows
-    __local uint8 tmp;
-    if(get_global_id(0) == 0) { // [TODO] Make this parallel please
-        // Second row [x10 x11 x12 x13] to [x11 x12 x13 x10]
-        tmp = Y[1];
-        Y[1] = Y[1 + 4];      // x10' <- x11
-        Y[1 + 4] = Y[1 + 8];  // x11' <- x12
-        Y[1 + 8] = Y[1 + 12]; // x12' <- x13
-        Y[1 + 12] = tmp;          // x13' <- x10
-        
-        // Third row [x20 x21 x22 x23] to [x22 x23 x20 x21]
-        tmp = Y[2];
-        Y[2] = Y[2 + 8];      // x20' <- x22
-        Y[2 + 8] = tmp;           // x_22' <- x20
-        tmp = Y[2 + 4];
-        Y[2 + 4] = Y[2 + 12]; // x21' <- x23
-        Y[2 + 12] = tmp;          // x23' <- x21
-        
-        // Fourth row [x30 x31 x32 x33] to [x33 x30 x31 x32]
-        tmp = Y[3];
-        Y[3] = Y[3 + 12];      // x30' <- x33
-        Y[3 + 12] = Y[3 + 8];  // x33' <- x32
-        Y[3 + 8] = Y[3 + 4];   // x32' <- x31
-        Y[3 + 4] = tmp;            // x31' <- x30
-    }
+    __private int i = id % 4;
+    __private int j = id / 4;
+    Z[i+4*((j-i+4)%4)] = Y[i+4*j];
 
 	barrier(CLK_LOCAL_MEM_FENCE);
 
     // AddRoundKey
-    #pragma unroll 16
-    for(int i = 0; i < 16; i++)
-        Y[i] ^= RK[((context.nr-1)*16)+i];
+    Z[id] ^= RK[(context.nr*16)+id];
 
-	barrier(CLK_LOCAL_MEM_FENCE);
-*/
     // Copy results back into host memory
-    #pragma unroll 16
-    for(int i=0; i<16; i++)
-        ctx_d[i] = RK[31+i];
+    ctx_d[id] = Z[id];
 }

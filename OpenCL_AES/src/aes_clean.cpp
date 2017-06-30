@@ -5,6 +5,7 @@
 
 #include <utility>
 #include <CL/cl2.hpp>
+#include <CL/cl_ext.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -212,8 +213,8 @@ void opencl_aes_crypt_ecb(vector<unsigned char>::iterator ptx_h_begin,
   checkErr(err, "CommandQueue::CommandQueue()");cl::Event event;
   err = queue.enqueueNDRangeKernel(kernel,
                                    cl::NullRange,
-                                   cl::NDRange(4),
-                                   cl::NDRange(4),
+                                   cl::NDRange(16),
+                                   cl::NDRange(16),
                                    NULL,
                                    &event);
   checkErr(err, "CommandQueue::enqueueNDRangeKernel()");
