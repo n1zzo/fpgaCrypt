@@ -490,6 +490,6 @@ void xts_test() {
 }
 
 int main(int argc, char *argv[]) {
-  //aes_test();
-  xts_test();
+  aes_test();
+  //xts_test();
 }
