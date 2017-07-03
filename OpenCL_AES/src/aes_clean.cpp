@@ -18,7 +18,6 @@
 #include <assert.h>
 
 #define VERIFY    // Enable result comparison with mbedTLS
-
 #define INTELFPGA // External Kernel compilation
 
 #ifndef INTELFPGA
@@ -160,28 +159,29 @@ cl::Kernel createOpenClKernel(const cl::Context &context,
   return kernel;
 }
 
-void opencl_aes_crypt_ecb(vector<unsigned char>::iterator ptx_h_begin,
-                          vector<unsigned char>::iterator ptx_h_end,
+void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
                           vector<unsigned char> &key_h,
-                          vector<unsigned char>::iterator ctx_h_begin,
-                          vector<unsigned char>::iterator ctx_h_end) {
+                          vector<unsigned char> &ctx_h) {
 
-  // Verify key size is one of the supported ones
-  int key_size_bits = key_h.size() * 8;
-  if(key_size_bits != 128 && key_size_bits != 192 && key_size_bits != 256) {
-    cerr << "Error: unsupported key size -> " << key_size_bits << endl;
+  // Verify plaintext size is greater than 16 Byte
+  if(ptx_h.size() < 16) {
+    cerr << "Error: plaintext is too short!"
+         << endl;
     exit(-1);
   }
 
+  int nblocks = ptx_h.size() / 16;
+
+  // Spawn aes-xts kernels and feed them with blocks
   cl_int err;
 
   // Initialize opencl board
   cl::Context context = initOpenclPlatform();
 
-  cl::Buffer ptxBuffer(context, ptx_h_begin, ptx_h_end, true, true, &err);
+  cl::Buffer ptxBuffer(context, ptx_h.begin(), ptx_h.end(), true, true, &err);
   checkErr(err, "Buffer::Buffer()");
 
-  cl::Buffer ctxBuffer(context, ctx_h_begin, ctx_h_end, false, true, &err);
+  cl::Buffer ctxBuffer(context, ctx_h.begin(), ctx_h.end(), false, true, &err);
   checkErr(err, "Buffer::Buffer()");
 
   cl::Buffer keyBuffer(context, key_h.begin(), key_h.end(), true, true, &err);
@@ -194,10 +194,12 @@ void opencl_aes_crypt_ecb(vector<unsigned char>::iterator ptx_h_begin,
 
   cl::Kernel kernel = createOpenClKernel(context,
       devices,
-      "./aes_kernel",
-      "aesEncrypt");
+      "./aes_ecb_kernel",
+      "aesEcbEncrypt");
 
-  int ptx_size = distance(ptx_h_begin, ptx_h_end);
+  // We are considering only full-size blocks
+  int ptx_size = nblocks * AES_BLK_BYTES;
+  int key_size_bits = key_h.size()*8;
 
   err = kernel.setArg(0, ptxBuffer);
   checkErr(err, "Kernel::setArg()");
@@ -207,22 +209,28 @@ void opencl_aes_crypt_ecb(vector<unsigned char>::iterator ptx_h_begin,
   checkErr(err, "Kernel::setArg()");
   err = kernel.setArg(3, key_size_bits);
   checkErr(err, "Kernel::setArg()");
+  err = kernel.setArg(4, ptx_size);
+  checkErr(err, "Kernel::setArg()");
 
   // Create command queue and run kernel
   cl::CommandQueue queue(context, devices[0], 0, &err);
   checkErr(err, "CommandQueue::CommandQueue()");cl::Event event;
   err = queue.enqueueNDRangeKernel(kernel,
-                                   cl::NullRange,
-                                   cl::NDRange(16),
-                                   cl::NDRange(16),
-                                   NULL,
-                                   &event);
+      cl::NullRange,
+      cl::NDRange(16*nblocks),
+      cl::NDRange(16),
+      NULL,
+      &event);
   checkErr(err, "CommandQueue::enqueueNDRangeKernel()");
-
-  int ctx_size = distance(ctx_h_begin, ctx_h_end);
 
   // Read results from device
   event.wait();
+  err = queue.enqueueReadBuffer(ctxBuffer,
+      CL_TRUE,
+      0,
+      ctx_h.size(),
+      ctx_h.data());
+  checkErr(err, "CommandQueue::enqueueReadBuffer()");
 }
 
 void aes_test() {
@@ -241,20 +249,7 @@ void aes_test() {
                                  0xab, 0xf7, 0x15, 0x88,
                                  0x09, 0xcf, 0x4f, 0x3c};
 
-  opencl_aes_crypt_ecb(ptx_h.begin(), ptx_h.end(),
-                       key_h,
-                       ctx_h.begin(), ctx_h.end());
-
-  // Print results
-  cout << endl << "Key is:                ";
-  for(const unsigned char &byte : key_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl << "Plaintext is:          ";
-  for(const unsigned char &byte : ptx_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl << "Ciphertext is:         ";
-  for(const unsigned char &byte : ctx_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+  opencl_aes_crypt_ecb(ptx_h, key_h, ctx_h);
 
 #ifdef VERIFY
   vector<unsigned char> ctx_mbed = {0x00, 0x00, 0x00, 0x00,
@@ -264,6 +259,10 @@ void aes_test() {
 
   // Compare results
   mbedAesReference(ptx_h, key_h, ctx_mbed);
+
+  cout << endl << "Ciphertext is:         ";
+  for(const unsigned char &byte : ctx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
 
   cout << endl << "MbedTLS ciphertext is: ";
   for(const unsigned char &byte : ctx_mbed)
@@ -313,9 +312,7 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
   vector<unsigned char>::iterator tweak_end = tweak.begin() + AES_BLK_BYTES;
 
   // Compute initial tweak value
-  opencl_aes_crypt_ecb(iv_h.begin(), iv_h.end(),
-                       key2,
-                       tweak.begin(), tweak_end);
+  opencl_aes_crypt_ecb(iv_h, key2, tweak);
   
   // Fill tweak vector
   for(int i = AES_BLK_BYTES; i < tweak_size; i++) {
@@ -323,12 +320,6 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
     if(i%AES_BLK_BYTES == (AES_BLK_BYTES-1))
       gf128_tweak_mult(tweak.data()+(i-(AES_BLK_BYTES-1)));
   }
-
-  cout << endl << "Tweak: " << endl;
-  for(const unsigned char &byte : tweak)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-
-  cout << endl;
 
   // Spawn aes-xts kernels and feed them with blocks
   cl_int err;
@@ -395,11 +386,6 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
       ctx_h.data());
   checkErr(err, "CommandQueue::enqueueReadBuffer()");
 
-  cout << endl << "Ciphertext before: " << endl;
-  for(const unsigned char &byte : ctx_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl;
-
   // Compute last partial block and perform ctx stealing
   if(ptx_h.size() % AES_BLK_BYTES != 0) {
     int partial_block_size = ptx_h.size()%AES_BLK_BYTES;
@@ -415,11 +401,11 @@ void opencl_aes_crypt_xts(vector<unsigned char> &ptx_h,
     // XOR-Encrypt-XOR
     for(int i = 0; i < AES_BLK_BYTES; i++)
       ctx_h[last_complete_block+i] ^= tweak[nblocks*AES_BLK_BYTES+i];
-    opencl_aes_crypt_ecb(last_complete_ctx_it,
-                         last_complete_ctx_it+AES_BLK_BYTES,
+    vector<unsigned char> last_complete_ctx(last_complete_ctx_it,
+                                            last_complete_ctx_it+AES_BLK_BYTES);
+    opencl_aes_crypt_ecb(last_complete_ctx,
                          key1,
-                         last_complete_ctx_it,
-                         last_complete_ctx_it+AES_BLK_BYTES);
+                         last_complete_ctx);
     for(int i = 0; i < AES_BLK_BYTES; i++)
       ctx_h[last_complete_block+i] ^= tweak[nblocks*AES_BLK_BYTES+i];
   }
@@ -450,48 +436,21 @@ void xts_test() {
   assert(urandom.good());
   urandom.close();
   
-  // NIST Test vectors
-  //key_h = {0xa1, 0xb9, 0x0c, 0xba, 0x3f, 0x06, 0xac, 0x35,
-  //         0x3b, 0x2c, 0x34, 0x38, 0x76, 0x08, 0x17, 0x62,
-  //         0x09, 0x09, 0x23, 0x02, 0x6e, 0x91, 0x77, 0x18,
-  //         0x15, 0xf2, 0x9d, 0xab, 0x01, 0x93, 0x2f, 0x2f};
-
-  //iv_h =  {0x4f, 0xae, 0xf7, 0x11, 0x7c, 0xda, 0x59, 0xc6,
-  //         0x6e, 0x4b, 0x92, 0x01, 0x3e, 0x76, 0x8a, 0xd5};
-
-  //ptx_h = {0xeb, 0xab, 0xce, 0x95, 0xb1, 0x4d, 0x3c, 0x8d,
-  //         0x6f, 0xb3, 0x50, 0x39, 0x07, 0x90, 0x31, 0x1c};
-
-  //ctx_h = 778ae8b43cb98d5a825081d5be471c63
-
   opencl_aes_crypt_xts(ptx_h, key_h, iv_h, ctx_h);
-
-  cout << endl << "Plaintext: " << endl;
-  for(const unsigned char &byte : ptx_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl << "Key: " << endl;
-  for(const unsigned char &byte : key_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl << "Iv: " << endl;
-  for(const unsigned char &byte : iv_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  cout << endl << "Ciphertext: " << endl;
-  for(const unsigned char &byte : ctx_h)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
 
   #ifdef VERIFY
   mbedXtsReference(ptx_h, key_h, iv_h, ctx_ref);
-
-  cout << endl << "Reference Ciphertext: " << endl;
-  for(const unsigned char &byte : ctx_ref)
-    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-
   #endif //VERIFY
 
-  cout << endl;
+}
+
+// Measure execution times for data bytes ranging from 1MB to 10GB
+// growing as 1MB, 2MB, 5MB, 10MB and so on
+void aes_benchmark() {
+  ;
 }
 
 int main(int argc, char *argv[]) {
-  //aes_test();
-  xts_test();
+  aes_test();
+  //xts_test();
 }
