@@ -440,6 +440,14 @@ void xts_test() {
 
   #ifdef VERIFY
   mbedXtsReference(ptx_h, key_h, iv_h, ctx_ref);
+
+  cout << endl << "Ciphertext: " << endl;
+  for(const unsigned char &byte : ctx_h)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
+
+  cout << endl << "Reference Ciphertext: " << endl;
+  for(const unsigned char &byte : ctx_ref)
+    cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
   #endif //VERIFY
 
 }
@@ -451,6 +459,6 @@ void aes_benchmark() {
 }
 
 int main(int argc, char *argv[]) {
-  aes_test();
-  //xts_test();
+  //aes_test();
+  xts_test();
 }
