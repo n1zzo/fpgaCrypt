@@ -212,8 +212,6 @@ void aesXtsEncrypt (__constant const uint8* restrict ptx_d,
     // Perform this computation with one work_group per AES block
     // each work group is composed of 16 work_item, one per AES block byte
     if(group_id < (ptx_size / 16)) {
-        printf("%x", ptx_d[global_id]);
-
         // Note that bytes are inserted columns by rows, so the first 4 bytes
         // in the arrays corresponds to the first column on the left
 

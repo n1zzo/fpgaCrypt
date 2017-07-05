@@ -15,9 +15,10 @@
 #include <string>
 #include <iterator>
 #include <vector>
+#include <chrono>
 #include <assert.h>
 
-#define VERIFY    // Enable result comparison with mbedTLS
+// #define VERIFY // Enable result comparison with mbedTLS
 #define INTELFPGA // External Kernel compilation
 
 #ifndef INTELFPGA
@@ -30,9 +31,12 @@
 using namespace std;
 using namespace aocl_utils;
 
-const unsigned int xts_key_size = 16;        // Key size in bytes
-const unsigned int iv_size = AES_BLK_BYTES;  // XTS IV size (1 cipher block)
-const size_t ptx_size_xts = 1045;	     // XTS Plaintext size in bytes
+typedef chrono::high_resolution_clock Clock;
+
+const unsigned int xts_key_size = 16;          // Key size in bytes
+const unsigned int iv_size = AES_BLK_BYTES;    // XTS IV size (1 cipher block)
+const vector<uint64_t> bench_values {1, 2, 5}; // Benchmark mult. constants
+uint64_t ptx_size_xts = 1045;	               // XTS Plaintext size in bytes
 
 const char *getErrorString(cl_int error);
 
@@ -233,32 +237,32 @@ void opencl_aes_crypt_ecb(vector<unsigned char> &ptx_h,
   checkErr(err, "CommandQueue::enqueueReadBuffer()");
 }
 
+
 void aes_test() {
 
-  // Buffer creation
-  vector<unsigned char> ptx_h = {0x32, 0x43, 0xf6, 0xa8,
-                                 0x88, 0x5a, 0x30, 0x8d,
-                                 0x31, 0x31, 0x98, 0xa2,
-                                 0xe0, 0x37, 0x07, 0x34};
-  vector<unsigned char> ctx_h = {0x00, 0x00, 0x00, 0x00,
-                                 0x00, 0x00, 0x00, 0x00,
-                                 0x00, 0x00, 0x00, 0x00,
-                                 0x00, 0x00, 0x00, 0x00};
-  vector<unsigned char> key_h = {0x2b, 0x7e, 0x15, 0x16,
-                                 0x28, 0xae, 0xd2, 0xa6,
-                                 0xab, 0xf7, 0x15, 0x88,
-                                 0x09, 0xcf, 0x4f, 0x3c};
+  // Define the key, plaintext, blocks number
+  vector<unsigned char> ptx_h;
+  vector<unsigned char> key_h;
+  vector<unsigned char> ctx_h;
+  vector<unsigned char> ctx_ref;
 
+  ptx_h.resize(ptx_size_xts);
+  key_h.resize(xts_key_size * 2);
+  ctx_h.resize(ptx_size_xts);
+  ctx_ref.resize(ptx_size_xts);
+
+  // Extract random key, IV and data
+  ifstream urandom("/dev/urandom", ios::in|ios::binary);
+  assert(urandom.good());
+  urandom.read(reinterpret_cast<char*>(ptx_h.data()), ptx_size_xts);
+  urandom.read(reinterpret_cast<char*>(key_h.data()), xts_key_size * 2);
+  assert(urandom.good());
+  urandom.close();
+  
   opencl_aes_crypt_ecb(ptx_h, key_h, ctx_h);
 
 #ifdef VERIFY
-  vector<unsigned char> ctx_mbed = {0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00};
-
-  // Compare results
-  mbedAesReference(ptx_h, key_h, ctx_mbed);
+  mbedAesReference(ptx_h, key_h, ctx_ref);
 
   cout << endl << "Ciphertext is:         ";
   for(const unsigned char &byte : ctx_h)
@@ -269,7 +273,7 @@ void aes_test() {
     cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
   cout << endl;
 
-  if (ctx_h == ctx_mbed)
+  if (ctx_h == ctx_ref)
     cout << "CORRECT: the ciphertexts match!" << endl;
   else
     cout << "WRONG: the ciphertexts DO NOT match!" << endl;
@@ -438,7 +442,7 @@ void xts_test() {
   
   opencl_aes_crypt_xts(ptx_h, key_h, iv_h, ctx_h);
 
-  #ifdef VERIFY
+#ifdef VERIFY
   mbedXtsReference(ptx_h, key_h, iv_h, ctx_ref);
 
   cout << endl << "Ciphertext: " << endl;
@@ -448,17 +452,31 @@ void xts_test() {
   cout << endl << "Reference Ciphertext: " << endl;
   for(const unsigned char &byte : ctx_ref)
     cout << setfill('0') << setw(2) << hex << static_cast<int>(byte);
-  #endif //VERIFY
+#endif //VERIFY
 
 }
 
 // Measure execution times for data bytes ranging from 1MB to 10GB
 // growing as 1MB, 2MB, 5MB, 10MB and so on
 void aes_benchmark() {
-  ;
+  ofstream outFile;
+  outFile.open ("aes_ecb_benchmark.csv");
+  for(uint64_t size=1000000; size < 10*(uint64_t)1000000000; size*=10)
+    for(uint64_t value : bench_values) {
+      cout << "Testing..." << size*value << endl;
+      ptx_size_xts = size*value;
+      auto t1 = Clock::now();
+      aes_test();
+      auto t2 = Clock::now();
+      auto ecb_elapsed_time = chrono::duration_cast<chrono::nanoseconds>(t2-t1).count();
+      outFile << size*value << ","
+              << ecb_elapsed_time << endl;
+    }
+  outFile.close();
 }
 
 int main(int argc, char *argv[]) {
   //aes_test();
-  xts_test();
+  //xts_test();
+  aes_benchmark();
 }
