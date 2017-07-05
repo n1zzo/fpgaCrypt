@@ -7,7 +7,7 @@ INCLUDE    = -I /usr/include -I $(MBEDTLS)/include/ -I ./common/inc
 LIBDIR     = $(MBEDTLS)/library
 BINDIR     = ./bin
 SOURCES    = $(SRCDIR)/aes_clean.cpp $(SRCDIR)/cl_errors.cpp ./common/src/AOCLUtils/*.cpp
-KERNELS    = $(SRCDIR)/aes_kernel.cl $(SRCDIR)/aes_xts_kernel.cl
+KERNELS    = $(SRCDIR)/aes_ecb_kernel.cl $(SRCDIR)/aes_xts_kernel.cl
 AOCX       = $(KERNELS:.cl=.aocx)
 OBJECTS    = $(SOURCES:.c=.o)
 BOARD      = attila_v3_prod
